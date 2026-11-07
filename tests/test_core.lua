@@ -207,6 +207,60 @@ return function(stubs, ADDON)
         assertEq(SG:Char().spentBySource.vendor, 0)
     end)
 
+    test("repair: Leatrix auto-repair files as Repairs with no hook firing", function()
+        -- the 21:24:44 case: 2s repair, /sg log showed repair 0g and
+        -- source vendor — the money event fired before the Repair All
+        -- hook or the durability event ran. The MERCHANT_SHOW baseline
+        -- is the signal already in place, so the cost drop at the
+        -- money change itself identifies it.
+        local SG = fresh(100000)
+        stubs.state.repairCost = 200
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 0 -- Leatrix repaired; the hook never ran
+        setMoney(SG, 99800)
+        local char = SG:Char()
+        assertEq(char.spentBySource.repair, 200)
+        assertEq(char.spentBySource.vendor, 0)
+        assertEq(SG:ActivityLog()[1].repair, 200)
+    end)
+
+    test("repair: cursor repair files as Repairs even when the durability event is late", function()
+        -- same timing failure, single item: the money change arrives
+        -- before UPDATE_INVENTORY_DURABILITY, so only the baseline
+        -- cost drop can identify it
+        local SG = fresh(100000)
+        stubs.state.repairCost = 10000
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 9800 -- one item repaired, 2s
+        setMoney(SG, 99800)
+        local char = SG:Char()
+        assertEq(char.spentBySource.repair, 200)
+        assertEq(char.spentBySource.vendor, 0)
+    end)
+
+    test("repair: a purchase with no repair cost drop still files as Vendor", function()
+        -- the cost-drop check must not claim ordinary purchases: the
+        -- repair cost did not move, so the drop is 0
+        local SG = fresh(100000)
+        stubs.state.repairCost = 10000
+        fire(SG, "MERCHANT_SHOW")
+        setMoney(SG, 95000) -- 5s purchase, gear untouched
+        local char = SG:Char()
+        assertEq(char.spentBySource.repair, 0)
+        assertEq(char.spentBySource.vendor, 5000)
+    end)
+
+    test("repair: repair plus purchase in one tick splits correctly", function()
+        local SG = fresh(100000)
+        stubs.state.repairCost = 200
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 0
+        setMoney(SG, 99300) -- 2s repair + 5s purchase batched
+        local char = SG:Char()
+        assertEq(char.spentBySource.repair, 200)
+        assertEq(char.spentBySource.vendor, 500)
+    end)
+
     test("log: a repair change records the pending repair cost", function()
         -- the diagnostic for a repair filed as "other": the log shows
         -- whether a repair cost was pending when the money changed

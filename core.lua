@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.19"
+SG.VERSION = "1.0.20"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -378,7 +378,19 @@ function SG:OnMoney()
         p.loot = 0
     end
     self._lootAtDelta = p.loot -- pending loot when this money change arrived
-    self._repairAtDelta = p.repair or 0 -- pending repair cost (hook or durability flag) at the time
+    -- the repair-cost drop since the merchant opened. The MERCHANT_SHOW
+    -- baseline is captured before anything repairs, so this is the one
+    -- repair signal already in place when the money changes: a Leatrix
+    -- auto-repair (or a cursor repair) can have its money event fire
+    -- before the Repair All hook or the durability event runs, leaving
+    -- the flag at 0 and the spend filed as vendor/other. Read the drop
+    -- here, at the change itself.
+    local repairCostDrop = 0
+    if p.merchant and p.repairCostBase and p.repairCostBase > 0 then
+        repairCostDrop = p.repairCostBase - (GetRepairAllCost() or 0)
+        if repairCostDrop < 0 then repairCostDrop = 0 end
+    end
+    self._repairAtDelta = math.max(p.repair or 0, repairCostDrop) -- pending repair cost at the time
 
     if delta < 0 then
         -- gold sent by mail: recorded as a money move, never as spending.
@@ -440,23 +452,42 @@ function SG:OnMoney()
             self:CheckLockedDip()
             return
         end
-        if p.repair and p.repair > 0 then
-            -- a Repair All click captured its cost in the hook below.
-            -- Exact match, or less than the captured cost (guild funds
-            -- covered part of it), is a repair. More than the cost is
-            -- not the repair delta at all — it's a purchase, so the
-            -- flag is dropped and it falls through to vendor. A flag
-            -- older than a few seconds is stale too: a guild-paid
-            -- repair produces no delta, so the flag survives until the
-            -- next money change — without the guard, a later purchase
-            -- smaller than the repair cost would be filed as a repair.
-            local cost = p.repair
-            p.repair = 0
-            if GetTime() - (p.repairAt or 0) <= 5 and (-delta) <= cost then
+        -- Repairs: two signals for the same repair. (1) the Repair
+        -- All hook flag, fresh within 5s; (2) the repair-cost drop
+        -- since the merchant opened (above). The drop *confirms* a
+        -- repair really happened — the gear's cost fell by exactly
+        -- that much — so it catches repairs whose hook saw a 0 cost
+        -- and cursor repairs whose durability event arrived after the
+        -- money change, both of which filed as vendor/other without
+        -- it, and a batched repair plus purchase splits on it. The
+        -- flag alone is unconfirmed: a Repair All click with no
+        -- repair behind it (a purchase bigger than the repair cost)
+        -- must not be split — the old rule stands, file it only when
+        -- the whole delta fits the flag, else fall through. A flag
+        -- older than a few seconds is stale too: a guild-paid repair
+        -- produces no delta, so the flag survives until the next
+        -- money change — without the guard, a later purchase smaller
+        -- than the repair cost would be filed as a repair. The
+        -- baseline is refreshed after a repair files, so a later
+        -- change in the same visit measures fresh.
+        local repairCost = 0
+        local repairConfirmed = false
+        if repairCostDrop > 0 then
+            repairCost = repairCostDrop
+            repairConfirmed = true
+        elseif p.repair and p.repair > 0 and GetTime() - (p.repairAt or 0) <= 5 then
+            repairCost = p.repair
+        end
+        p.repair = 0
+        if repairCost > 0 and (repairConfirmed or (-delta) <= repairCost) then
+            p.repairCostBase = GetRepairAllCost() or 0
+            if (-delta) <= repairCost then
                 self:RecordDelta(char, delta, "repair")
                 self:CheckLockedDip()
                 return
             end
+            self:RecordDelta(char, -repairCost, "repair")
+            delta = delta + repairCost
         end
         if p.ah then
             -- auction listing fee (deposit) paid while the AH window
