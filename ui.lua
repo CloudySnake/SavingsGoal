@@ -53,6 +53,11 @@ function SG:BuildUI()
     end)
     addBtn:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -28, -28)
 
+    local keepBtn = smallButton(mainFrame, "Keep", 60, function()
+        StaticPopup_Show("SG_DAILY_KEEP")
+    end)
+    keepBtn:SetPoint("RIGHT", addBtn, "LEFT", -6, 0)
+
     local scroll = CreateFrame("ScrollFrame", nil, mainFrame, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12, -60)
     scroll:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -32, 12)
@@ -80,14 +85,10 @@ local function wipe(parent)
     end
 end
 
--- days-to-goal as a readable label: raw days under two years, years beyond
--- that. A 7c/day surplus against a 100g goal is ~142,858 days — true, but
--- useless on screen; "~391 years" says the same thing.
-local function formatEta(days)
-    if days == nil then return "no surplus yet" end
-    if days >= 730 then return "~" .. math.floor(days / 365 + 0.5) .. " years" end
-    return "~" .. days .. " days"
-end
+-- ETA formatting lives in core.lua now (SG:FormatEta) so the info screen,
+-- the Titan feed and /sg list all show the same "~100 days" / "~48 years".
+-- A 7c/day surplus against a 100g goal is ~142,858 days — true, but useless
+-- on screen; "~391 years" says the same thing.
 
 function SG:RefreshUI()
     if not content then return end
@@ -107,6 +108,12 @@ function SG:RefreshUI()
         self.db.settings.windowDays, self:FormatGold(surplus)), 12)
     sl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
 
+    local keep = self:DailyKeepAmount()
+    if keep > 0 then
+        local kl = label(content, "Keeping for spending: " .. self:DailyKeepLabel(), 12)
+        kl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
+    end
+
     -- goals
     local goals = self:GetGoals()
     if #goals == 0 then
@@ -117,7 +124,7 @@ function SG:RefreshUI()
         local need = self:GoalNeed(g)
         local have = (g.seed or 0) + (g.saved or 0)
         local days = self:GoalDaysLeft(g)
-        local eta = need <= 0 and "|cff33ff99complete!|r" or formatEta(days)
+        local eta = need <= 0 and "|cff33ff99complete!|r" or self:FormatEta(days)
 
         local name = label(content, string.format("%d. %s", g.priority or 0, g.name), 13)
         name:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
@@ -156,7 +163,7 @@ function SG:RefreshUI()
 
     if #goals > 1 then
         local all = self:WaterfallDaysLeft()
-        local wl = label(content, "All goals, focused in priority order: " .. formatEta(all), 12)
+        local wl = label(content, "All goals, focused in priority order: " .. self:FormatEta(all), 12)
         wl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
     end
 
@@ -244,7 +251,7 @@ end
 
 -- text captured as the user types, so OnAccept never depends on the
 -- dialog's editBox field existing at click time
-local pendingName, pendingTarget, pendingSeed, pendingRate = nil, nil, nil, nil
+local pendingName, pendingTarget, pendingSeed, pendingRate, pendingKeep = nil, nil, nil, nil, nil
 
 local function captureAndGate(editBox, store)
     -- `self` here is the edit box; store its text and gate button1 on it
@@ -252,11 +259,18 @@ local function captureAndGate(editBox, store)
     if store == "name" then pendingName = text
     elseif store == "target" then pendingTarget = text
     elseif store == "seed" then pendingSeed = text
-    elseif store == "rate" then pendingRate = text end
+    elseif store == "rate" then pendingRate = text
+    elseif store == "keep" then pendingKeep = text end
     local parent = editBox.GetParent and editBox:GetParent()
     if parent and parent.button1 then
         if text ~= "" then parent.button1:Enable() else parent.button1:Disable() end
     end
+end
+
+-- Pre-fill for a rate/keep edit box: "100% of surplus" -> "100%",
+-- "10g/day" -> "10g". (The old code turned "10g/day" into "10gg".)
+local function ratePrefill(label)
+    return label:gsub(" of surplus", ""):gsub("g/day", "g")
 end
 
 local function showTargetPopup(name)
@@ -297,6 +311,30 @@ StaticPopupDialogs["SG_GOAL_NAME"] = {
         pendingName = nil
         parent:Hide()
         showTargetPopup(name)
+    end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+    whileDead = true, hideOnEscape = true,
+}
+
+-- Daily keep: gold held back for day-to-day spending, "50%" or "1g" syntax
+-- just like goal rates. 0 / "0%" switches it off again.
+StaticPopupDialogs["SG_DAILY_KEEP"] = {
+    text = "Keep back for day-to-day spending — e.g. half of surplus, or 1g per day:",
+    button1 = "Set", button2 = "Cancel",
+    hasEditBox = true, maxLetters = 12,
+    OnShow = function(self)
+        pendingKeep = nil
+        setPopupText(self, ratePrefill(SG:DailyKeepLabel()))
+    end,
+    EditBoxOnTextChanged = function(self) captureAndGate(self, "keep") end,
+    OnAccept = function(self)
+        local text = popupText(self, pendingKeep)
+        if text and text ~= "" and SG:SetDailyKeep(text) then
+            pendingKeep = nil
+            SG:RefreshUI(); SG:RefreshBroker()
+        else
+            return true -- empty or invalid: keep popup open so it can be corrected
+        end
     end,
     EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
     whileDead = true, hideOnEscape = true,
@@ -355,13 +393,19 @@ StaticPopupDialogs["SG_GOAL_SEED"] = {
     whileDead = true, hideOnEscape = true,
 }
 
+-- NOTE: never put a bare % in a dialog's `text`. Blizzard runs it through
+-- SetFormattedText, so "50%" throws a format error inside StaticPopup_Show
+-- and the popup simply never appears — with script errors off, the button
+-- looks dead. That was the Rate button bug (7 Nov 2026): only the Rate
+-- dialog had a % in its text, so only Rate did nothing. The % in the
+-- *prefill* is fine — that goes through edit-box SetText, not formatting.
 StaticPopupDialogs["SG_GOAL_RATE"] = {
-    text = "Savings rate for this goal — e.g. 50% or 10g per day:",
+    text = "Savings rate for this goal — e.g. half of surplus, or 10g per day:",
     button1 = "Set", button2 = "Cancel",
     hasEditBox = true, maxLetters = 12,
     OnShow = function(self, goal)
         pendingRate = nil
-        setPopupText(self, SG:RateLabel(goal):gsub(" of surplus", ""):gsub("/day", "g"))
+        setPopupText(self, ratePrefill(SG:RateLabel(goal)))
     end,
     EditBoxOnTextChanged = function(self) captureAndGate(self, "rate") end,
     OnAccept = function(self, goal)

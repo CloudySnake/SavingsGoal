@@ -143,4 +143,67 @@ return function(stubs, ADDON)
         SG:DeleteGoal(g2)
         assertEq(#SG:GetGoals(), 1)
     end)
+
+    test("FormatEta shows years for huge ETAs", function()
+        local SG = fresh()
+        assertEq(SG:FormatEta(142858), "~391 years")
+        assertEq(SG:FormatEta(17544), "~48 years")
+        assertEq(SG:FormatEta(100), "~100 days")
+        assertEq(SG:FormatEta(729), "~729 days")
+        assertEq(SG:FormatEta(730), "~2 years")
+        assertEq(SG:FormatEta(nil), "no surplus yet")
+        assertEq(SG:FormatEta(0), "complete!")
+    end)
+
+    test("SetDailyKeep parsing", function()
+        local SG = fresh()
+        assertEq(SG:SetDailyKeep("1g").mode, "perday")
+        assertEq(SG:SetDailyKeep("1g").value, 10000)
+        assertEq(SG:SetDailyKeep("50%").mode, "pct")
+        assertEq(SG:SetDailyKeep("50%").value, 50)
+        assertEq(SG:SetDailyKeep("abc"), nil)
+        assertEq(SG:DailyKeepLabel(), "50% of surplus") -- invalid input leaves it unchanged
+        SG:SetDailyKeep("0%")
+        assertEq(SG:DailyKeepAmount(), 0)
+    end)
+
+    test("DailyKeep shrinks the surplus goals see", function()
+        local SG = fresh()
+        seedDaily(SG, { [0] = { 20000, 0 } }) -- 20000c/day surplus
+        SG:SetDailyKeep("1g") -- hold back 10000c/day
+        assertEq(SG:DailyKeepAmount(), 10000)
+        assertEq(SG:SurplusAfterKeep(), 10000)
+        local g = SG:AddGoal("Mount", 10) -- 100000c need
+        assertEq(SG:GoalDaysLeft(g), 10) -- was 5 with the full surplus
+        SG:SetDailyKeep("50%")
+        assertEq(SG:DailyKeepAmount(), 10000)
+        assertEq(SG:SurplusAfterKeep(), 10000)
+    end)
+
+    test("DailyKeep as percent of surplus", function()
+        local SG = fresh()
+        seedDaily(SG, { [0] = { 20000, 0 } })
+        SG:SetDailyKeep("25%")
+        assertEq(SG:DailyKeepAmount(), 5000)
+        assertEq(SG:SurplusAfterKeep(), 15000)
+    end)
+
+    test("DailyKeep of more than the surplus leaves nothing for goals", function()
+        local SG = fresh()
+        seedDaily(SG, { [0] = { 5000, 0 } }) -- 5000c/day surplus
+        SG:SetDailyKeep("1g") -- 10000c/day keep
+        assertEq(SG:SurplusAfterKeep(), 0)
+        local g = SG:AddGoal("Mount", 10)
+        assertEq(SG:GoalDaysLeft(g), nil)
+    end)
+
+    test("TickGoals respects the daily keep", function()
+        local SG = fresh()
+        seedDaily(SG, { [0] = { 20000, 0 } }) -- 20000c/day surplus
+        SG:SetDailyKeep("1g") -- 10000c/day kept back
+        local g = SG:AddGoal("Mount", 10) -- 100000c
+        SG.db.lastTick = dayKey(3) -- 3 days elapsed
+        SG:TickGoals()
+        assertEq(g.saved, 30000) -- 3 days x 10000c after keep, not 60000
+    end)
 end

@@ -15,15 +15,17 @@ A WoW Forever addon for saving toward goals (e.g. epic mounts) without accidenta
   - **Savings rate** — either a fixed amount per day, or a % of daily surplus
   - **Starting seed** — gold from current reserves allocated to the goal on day one
   - **Priority order** — combined account surplus fills goal 1 first (waterfall), then rolls into goal 2, etc.
-- **Forecast:** `days to goal = (target − seed − saved so far) ÷ daily surplus`, where daily surplus is average `(income − outgoings)` per day over a trailing window (default 14 days). Also shows a combined view: "focused" (waterfall) vs "split" time to finish all goals.
+- **Forecast:** `days to goal = (target − seed − saved so far) ÷ daily surplus`, where daily surplus is average `(income − outgoings)` per day over a trailing window (default 14 days), minus any daily keep. Also shows a combined view: "focused" (waterfall) vs "split" time to finish all goals. ETAs over two years display in years, not days.
 - **Locked buckets:** saved gold is virtually locked. The headline number is **safe to spend** = total account gold − locked. Spending into locked gold triggers a warning. Guardrails: can't lock more than you have; optional minimum spending buffer (so your last 50g for repairs never gets locked).
+- **Daily keep:** hold back an amount for day-to-day spending — a fixed amount per day (e.g. 1g) or a % of daily surplus (e.g. 50%), same syntax as goal rates. Kept gold is never allocated to goals, so it stays inside safe-to-spend; it only shrinks the surplus the forecasts and the waterfall have to work with. Set via the Keep button on the info screen or `/sg keep <50%|1g>`; 0 switches it off.
 - Optional hard lock (later): auto-mail the saved portion to the bank alt at each threshold, so it's genuinely out of reach.
 
 ## UI
 
 - **Titan Panel (LibDataBroker) plugin:** headline on the bar — safe-to-spend gold, current goal progress, days-to-goal. Click opens the info screen.
 - **Minimap button** (LibDBIcon, toggleable): same click behaviour.
-- **Info screen:** per-goal progress bars with saved/target and days-left, account totals, per-character breakdown, income by source. Add/edit goals, set seed and rate, reorder priority, delete — via in-game dialogs and `/sg` slash commands.
+- **Info screen:** per-goal progress bars with saved/target and days-left, account totals, per-character breakdown, income by source. Add/edit goals, set seed, rate and daily keep, reorder priority, delete — via in-game dialogs and `/sg` slash commands.
+- **Popup text rule:** Blizzard runs dialog `text` through SetFormattedText, so a bare `%` in it throws and the popup never appears (the button looks dead). Never put `%` in dialog text — reword instead (e.g. "half of surplus", not "50%"). `%` in edit-box prefill is fine (SetText, not formatting).
 
 ## Blind-build notes
 

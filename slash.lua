@@ -8,6 +8,7 @@ local function help()
     print("  /sg list — show goals and forecasts")
     print("  /sg seed <name> <gold> — allocate current gold to a goal")
     print("  /sg rate <name> <50%|10g> — set the savings rate")
+    print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -41,11 +42,9 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
         end
     elseif cmd == "list" then
         for _, g in ipairs(SG:GetGoals()) do
-            local days = SG:GoalDaysLeft(g)
-            local eta = days == nil and "?" or (days .. "d")
-            print(string.format("  %s: %s / %s (~%s) [%s]", g.name,
+            print(string.format("  %s: %s / %s (%s) [%s]", g.name,
                 SG:FormatGoldShort((g.seed or 0) + (g.saved or 0)),
-                SG:FormatGoldShort(g.target), eta, SG:RateLabel(g)))
+                SG:FormatGoldShort(g.target), SG:FormatEta(SG:GoalDaysLeft(g)), SG:RateLabel(g)))
         end
         print("  Safe to spend: " .. SG:FormatGold(SG:SafeToSpend()))
     elseif cmd == "seed" then
@@ -67,6 +66,15 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             SG:RefreshUI(); SG:RefreshBroker()
         else
             print("|cff33ff99SavingsGoal:|r usage: /sg rate <name> <50%|10g>")
+        end
+    elseif cmd == "keep" then
+        if rest == "" then
+            print("|cff33ff99SavingsGoal:|r keeping for spending: " .. SG:DailyKeepLabel())
+        elseif SG:SetDailyKeep(rest) then
+            print("|cff33ff99SavingsGoal:|r keeping for spending: " .. SG:DailyKeepLabel())
+            SG:RefreshUI(); SG:RefreshBroker()
+        else
+            print("|cff33ff99SavingsGoal:|r usage: /sg keep <50%|1g> (0% switches it off)")
         end
     elseif cmd == "minimap" then
         SG:ToggleMinimap()

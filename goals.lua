@@ -61,17 +61,52 @@ function SG:SetSeed(goal, gold)
     return goal.seed
 end
 
-function SG:SetRate(goal, text)
-    -- accepts "50%", "50", or "10g" / "10g/day"
-    if not text then return end
+-- shared "50%" / "10g" parsing for goal rates and the daily keep.
+-- Accepts "50%", "50", or "10g" / "10g/day"; returns nil for anything else.
+local function parseRate(text)
+    if not text then return nil end
     text = text:gsub("%s+", ""):lower()
-    local pct = text:match("^(%d+)%%?$")
     local perday = text:match("^(%d+)g")
-    if perday then
-        goal.rate = { mode = "perday", value = tonumber(perday) * 10000 }
-    elseif pct then
-        goal.rate = { mode = "pct", value = math.min(100, math.max(0, tonumber(pct))) }
-    end
+    if perday then return { mode = "perday", value = tonumber(perday) * 10000 } end
+    local pct = text:match("^(%d+)%%?$")
+    if pct then return { mode = "pct", value = math.min(100, math.max(0, tonumber(pct))) } end
+    return nil
+end
+
+function SG:SetRate(goal, text)
+    local rate = parseRate(text)
+    if rate then goal.rate = rate end
+end
+
+-- ------------------------------------------------------------ daily keep --
+-- Gold held back for day-to-day spending: a fixed amount per day ("1g") or
+-- a % of daily surplus ("50%"), in the same syntax as goal rates. Kept gold
+-- is never allocated to goals, so it stays inside "safe to spend" — it only
+-- shrinks the surplus the forecasts and the waterfall have to work with.
+-- 0 (the default) means no keep: everything goes to goals as before.
+function SG:SetDailyKeep(text)
+    local keep = parseRate(text)
+    if not keep then return nil end
+    self.db.settings.dailyKeep = keep
+    return keep
+end
+
+function SG:DailyKeepLabel()
+    local k = self.db.settings.dailyKeep or { mode = "pct", value = 0 }
+    if k.mode == "perday" then return self:FormatGoldShort(k.value) .. "/day" end
+    return k.value .. "% of surplus"
+end
+
+function SG:DailyKeepAmount() -- copper/day held back for spending
+    local k = self.db.settings.dailyKeep or { mode = "pct", value = 0 }
+    if k.mode == "perday" then return k.value end
+    local surplus = self:DailySurplus()
+    if surplus <= 0 then return 0 end
+    return surplus * (k.value / 100)
+end
+
+function SG:SurplusAfterKeep() -- copper/day actually available to goals
+    return math.max(0, self:DailySurplus() - self:DailyKeepAmount())
 end
 
 function SG:RateLabel(goal)
@@ -146,7 +181,7 @@ end
 function SG:GoalDaysLeft(goal)
     local need = self:GoalNeed(goal)
     if need <= 0 then return 0 end
-    local budget = self:GoalDailyBudget(goal, self:DailySurplus())
+    local budget = self:GoalDailyBudget(goal, self:SurplusAfterKeep())
     if budget <= 0 then return nil end -- no surplus: can't forecast
     return math.ceil(need / budget)
 end
@@ -156,7 +191,7 @@ function SG:WaterfallDaysLeft()
     local totalNeed = 0
     for _, g in ipairs(self:GetGoals()) do totalNeed = totalNeed + self:GoalNeed(g) end
     if totalNeed <= 0 then return 0 end
-    local surplus = self:DailySurplus()
+    local surplus = self:SurplusAfterKeep()
     if surplus <= 0 then return nil end
     return math.ceil(totalNeed / surplus)
 end
@@ -172,7 +207,7 @@ function SG:TickGoals()
     local days = self:DaysBetween(db.lastTick, today)
     db.lastTick = today
     if days <= 0 then return end
-    local surplus = self:DailySurplus()
+    local surplus = self:SurplusAfterKeep()
     if surplus <= 0 then return end
     local pool = surplus * days
     for _, goal in ipairs(self:GetGoals()) do

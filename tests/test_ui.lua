@@ -257,4 +257,59 @@ return function(stubs, ADDON)
         SG:ShowUI()
         assertEq(anyVisibleMatching("~100 days"), true)
     end)
+
+    -- Regression test for 7 Nov 2026: the Rate button did nothing because
+    -- its dialog text contained a bare "%" ("e.g. 50% ...") and Blizzard
+    -- runs dialog text through SetFormattedText, so StaticPopup_Show threw
+    -- before the popup appeared. Any bare % in any dialog text breaks that
+    -- dialog the same way.
+    test("No popup text contains a bare percent sign", function()
+        local SG = fresh()
+        _G.SlashCmdList = _G.SlashCmdList or {}
+        dofile(ADDON .. "slash.lua")
+        for which, info in pairs(StaticPopupDialogs) do
+            local text = info.text or ""
+            local stripped = text:gsub("%%%%", "")
+            assertEq(stripped:find("%", 1, true), nil, which .. " has a bare % in its text")
+        end
+    end)
+
+    test("Daily Keep popup sets the keep", function()
+        local SG = fresh()
+        local dialog = makeDialog("SG_DAILY_KEEP", "upper")
+        StaticPopupDialogs["SG_DAILY_KEEP"].OnShow(dialog)
+        typeText("SG_DAILY_KEEP", dialog, "1g")
+        clickAccept("SG_DAILY_KEEP", dialog)
+        assertEq(SG:DailyKeepAmount(), 10000)
+        assertEq(SG:DailyKeepLabel(), "1g/day")
+    end)
+
+    test("Daily Keep popup with invalid input keeps the popup open", function()
+        local SG = fresh()
+        local dialog = makeDialog("SG_DAILY_KEEP", "upper")
+        StaticPopupDialogs["SG_DAILY_KEEP"].OnShow(dialog)
+        typeText("SG_DAILY_KEEP", dialog, "abc")
+        local result = clickAccept("SG_DAILY_KEEP", dialog)
+        assertEq(result, true)
+        assertEq(dialog.shown, true)
+        assertEq(SG:DailyKeepAmount(), 0)
+    end)
+
+    test("Info screen shows the daily keep line", function()
+        local SG = fresh()
+        SG:SetDailyKeep("1g")
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("Keeping for spending: 1g/day"), true)
+    end)
+
+    test("BrokerText shows years for huge ETAs", function()
+        local SG = fresh()
+        dofile(ADDON .. "broker.lua")
+        local char = SG:Char()
+        char.lastMoney = 1522
+        char.bySource.other = 7
+        char.daily[SG:TodayKey()] = { income = 7, outgoing = 0 }
+        SG:AddGoal("Epic Mount", 100)
+        assertEq(SG:BrokerText(), "0g safe | Epic Mount 0g/100g ~391 years")
+    end)
 end

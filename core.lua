@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.2"
+SG.VERSION = "1.0.3"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -66,6 +66,13 @@ function SG:FormatGoldShort(copper) -- "1,240g"
     return (copper < 0 and "-" or "") .. self:Comma(g) .. "g"
 end
 
+function SG:FormatEta(days) -- "~100 days" / "~48 years"; nil -> "no surplus yet"
+    if days == nil then return "no surplus yet" end
+    if days == 0 then return "complete!" end
+    if days >= 730 then return "~" .. math.floor(days / 365 + 0.5) .. " years" end
+    return "~" .. days .. " days"
+end
+
 function SG:OwnChar(name)
     -- any character we've ever seen on this account counts as "own"
     if not name then return false end
@@ -99,6 +106,7 @@ function SG:InitDB()
     if s.windowDays == nil then s.windowDays = self.WINDOW_DAYS end
     if s.minimap == nil then s.minimap = true end
     if s.spendBuffer == nil then s.spendBuffer = 0 end -- copper never locked
+    if s.dailyKeep == nil then s.dailyKeep = { mode = "pct", value = 0 } end -- held back for spending each day; 0 = off
     self.db = db
 end
 

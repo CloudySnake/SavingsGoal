@@ -14,8 +14,8 @@ function SG:BrokerText()
     local g = goals[1]
     local days = self:GoalDaysLeft(g)
     local prog = self:FormatGoldShort((g.seed or 0) + (g.saved or 0)) .. "/" .. self:FormatGoldShort(g.target)
-    local eta = (days == nil) and "?" or (days .. "d")
-    return string.format("%s safe | %s %s ~%s", safe, g.name, prog, eta)
+    local eta = (days == nil) and "?" or self:FormatEta(days)
+    return string.format("%s safe | %s %s %s", safe, g.name, prog, eta)
 end
 
 function SG:BrokerTooltip(tooltip)
@@ -23,14 +23,15 @@ function SG:BrokerTooltip(tooltip)
     tooltip:AddLine(" ")
     for _, g in ipairs(self:GetGoals()) do
         local days = self:GoalDaysLeft(g)
-        local eta = (days == nil) and "no surplus yet" or (days == 0 and "complete!" or ("~" .. days .. " days"))
         tooltip:AddDoubleLine(g.name,
             string.format("%s / %s (%s)", self:FormatGoldShort((g.seed or 0) + (g.saved or 0)),
-                self:FormatGoldShort(g.target), eta))
+                self:FormatGoldShort(g.target), self:FormatEta(days)))
     end
     if #self:GetGoals() > 1 then
-        local all = self:WaterfallDaysLeft()
-        tooltip:AddDoubleLine("All goals (waterfall)", all == nil and "?" or ("~" .. all .. " days"))
+        tooltip:AddDoubleLine("All goals (waterfall)", self:FormatEta(self:WaterfallDaysLeft()))
+    end
+    if self:DailyKeepAmount() > 0 then
+        tooltip:AddDoubleLine("Keeping for spending", self:DailyKeepLabel(), 1, 1, 1, 0.2, 1, 0.6)
     end
     tooltip:AddLine(" ")
     tooltip:AddDoubleLine("Safe to spend", self:FormatGold(self:SafeToSpend()), 1, 1, 1, 0.2, 1, 0.6)
