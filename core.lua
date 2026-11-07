@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.16"
+SG.VERSION = "1.0.17"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -152,6 +152,7 @@ SG.pending = {
     mailSending = false,           -- a mail send is in progress (fee may follow)
     mailOpen = false,              -- mailbox is open
     repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
+    repairAt = 0,                  -- GetTime() the Repair All click was captured
     lootWindowAt = 0,              -- GetTime() of the last LOOT_OPENED (see grace period below)
     lootAt = 0,                    -- GetTime() pending loot was last added (see stale-loot expiry)
     ah = false,                    -- auction house window is open
@@ -306,19 +307,31 @@ function SG:RecordOutgoingMove(char, amount)
     table.insert(self.db.outgoingMoves, { amount = amount, day = self:TodayKey(), from = self:CharKey() })
 end
 
--- Consume a ledger note matching an incoming amount, if any.
-function SG:TakeOutgoingMove(delta)
+-- Consume the largest ledger note that fits inside an incoming
+-- amount, if any, and return it (0 if none). A transfer arriving
+-- batched with another gain used to miss the exact match entirely
+-- and fall through to "other" — the same batching flaw the mail
+-- path had before v1.0.16.
+function SG:TakeOutgoingMove(amount)
     self.db.outgoingMoves = self.db.outgoingMoves or {}
     for i = #self.db.outgoingMoves, 1, -1 do
         local m = self.db.outgoingMoves[i]
         if self:DaysBetween(m.day, self:TodayKey()) > 7 then
             table.remove(self.db.outgoingMoves, i)
-        elseif m.amount == delta and m.from ~= self:CharKey() then
-            table.remove(self.db.outgoingMoves, i)
-            return true
         end
     end
-    return false
+    local best, bestIdx = 0, nil
+    for i = 1, #self.db.outgoingMoves do
+        local m = self.db.outgoingMoves[i]
+        if m.from ~= self:CharKey() and m.amount <= amount and m.amount > best then
+            best, bestIdx = m.amount, i
+        end
+    end
+    if bestIdx then
+        table.remove(self.db.outgoingMoves, bestIdx)
+        return best
+    end
+    return 0
 end
 
 function SG:OnMoney()
@@ -378,10 +391,14 @@ function SG:OnMoney()
             -- Exact match, or less than the captured cost (guild funds
             -- covered part of it), is a repair. More than the cost is
             -- not the repair delta at all — it's a purchase, so the
-            -- stale flag is dropped and it falls through to vendor.
+            -- flag is dropped and it falls through to vendor. A flag
+            -- older than a few seconds is stale too: a guild-paid
+            -- repair produces no delta, so the flag survives until the
+            -- next money change — without the guard, a later purchase
+            -- smaller than the repair cost would be filed as a repair.
             local cost = p.repair
             p.repair = 0
-            if (-delta) <= cost then
+            if GetTime() - (p.repairAt or 0) <= 5 and (-delta) <= cost then
                 self:RecordDelta(char, delta, "repair")
                 self:CheckLockedDip()
                 return
@@ -452,11 +469,13 @@ function SG:OnMoney()
         remaining = remaining - match.amount
     end
     if remaining == 0 then return end
-    if self:TakeOutgoingMove(remaining) then
+    local moveAmount = self:TakeOutgoingMove(remaining)
+    if moveAmount > 0 then
         -- transfer from another of your characters, recognised from
         -- the sender's ledger note even though the inbox scan missed it
-        self:RecordMoneyMove(char, remaining)
-        return
+        self:RecordMoneyMove(char, moveAmount)
+        remaining = remaining - moveAmount
+        if remaining == 0 then return end
     end
     if self:ContextActive("bank") then
         -- bank withdrawal (personal, guild or warband): a money move, not income
@@ -597,7 +616,7 @@ end)
 SG:Register("PLAYER_MONEY", function(self) self:OnMoney() end)
 
 SG:Register("MERCHANT_SHOW", function(self) self.pending.merchant = true end)
-SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0 end)
+SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0; self.pending.repairAt = 0 end)
 
 SG:Register("AUCTION_HOUSE_SHOW", function(self) self.pending.ah = true end)
 SG:Register("AUCTION_HOUSE_CLOSED", function(self) self.pending.ah = false end)
@@ -756,11 +775,13 @@ SG:Register("MAIL_CLOSED", function(self) self.pending.mailOpen = false; self.pe
 -- runs when the player clicks Repair All; the next money delta that
 -- matches (or is less than, if guild funds covered part of it) is the
 -- repair bill. Guild-only repairs deduct nothing from the player, so
--- no delta arrives and the flag is dropped when the merchant closes.
+-- no delta arrives and the flag is dropped when the merchant closes —
+-- and a money change more than a few seconds after the click no
+-- longer counts as the repair either (stale-flag guard in OnMoney).
 if RepairAllItems then
     hooksecurefunc("RepairAllItems", function()
         local cost = GetRepairAllCost() or 0
-        if cost > 0 then SG.pending.repair = cost end
+        if cost > 0 then SG.pending.repair = cost; SG.pending.repairAt = GetTime() end
     end)
 end
 

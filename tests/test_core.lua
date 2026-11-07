@@ -145,6 +145,20 @@ return function(stubs, ADDON)
         assertEq(SG:Char().spentBySource.vendor, 4000)
     end)
 
+    test("repair: a stale flag from a guild-paid repair does not claim a later purchase", function()
+        -- the guild paid the whole bill, so no delta arrived and the
+        -- flag survived; a purchase minutes later, smaller than the
+        -- repair cost, used to be filed as a repair
+        local SG = fresh(100000)
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 2500
+        stubs.callHook("RepairAllItems")
+        stubs.state.time = stubs.state.time + 10 -- the click was 10s ago
+        setMoney(SG, 99000) -- bought something for 1000
+        assertEq(SG:Char().spentBySource.repair, 0)
+        assertEq(SG:Char().spentBySource.vendor, 1000)
+    end)
+
     test("loot: money arriving with the loot window open is loot", function()
         -- GoldLedger's other loot signal: no chat message needed.
         local SG = fresh(0)
@@ -534,6 +548,23 @@ return function(stubs, ADDON)
         assertEq(alt.moneyMoves, 50000)
         assertEq(alt.income, 0)
         assertEq(alt.bySource.other, 0)
+    end)
+
+    test("ledger: transfer arriving batched with another gain still files the transfer as a move", function()
+        -- the ledger used to need an exact match, so a batched delta
+        -- missed it and the transfer fell through to "other" — the
+        -- same batching flaw the mail path had before v1.0.16
+        local SG = fresh(100000)
+        stubs.callHook("SetSendMailMoney", 50000)
+        fire(SG, "MAIL_SEND_SUCCESS")
+        stubs.state.playerName = "Bankalt"
+        stubs.state.money = 0
+        for _, h in ipairs(SG.handlers["PLAYER_LOGIN"]) do h(SG) end
+        setMoney(SG, 55000) -- 50g transfer + 5g from elsewhere, one delta
+        local alt = SG:Char()
+        assertEq(alt.moneyMoves, 50000)
+        assertEq(alt.bySource.other, 5000)
+        assertEq(alt.income, 5000)
     end)
 
     test("reclassify income source: other -> loot, totals unchanged", function()
