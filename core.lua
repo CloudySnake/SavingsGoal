@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.14"
+SG.VERSION = "1.0.15"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -96,8 +96,8 @@ end
 local function newCharRecord()
     return {
         income = 0, outgoing = 0,
-        bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 },
-        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, other = 0 },
+        bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, trade = 0, other = 0 },
+        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, trade = 0, trainer = 0, taxi = 0, other = 0 },
         moneyMoves = 0, -- gold moved between own chars (tracked, excluded from surplus)
         daily = {},    -- ["YYYY-MM-DD"] = { income = n, outgoing = n }
         lastMoney = 0,
@@ -144,16 +144,37 @@ end
 SG.pending = {
     merchant = false,
     quest = false,
+    questAmount = 0,               -- exact money reward from QUEST_TURNED_IN (see below)
+    questAt = 0,                   -- GetTime() it was set (stale amounts expire)
+    questSeen = false,             -- QUEST_TURNED_IN fired for this turn-in
     loot = 0,                      -- accumulated: looted gold awaiting its PLAYER_MONEY delta
     sendMoney = 0,                 -- gold attached to outgoing mail
     mailSending = false,           -- a mail send is in progress (fee may follow)
     mailOpen = false,              -- mailbox is open
     repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
     lootWindowAt = 0,              -- GetTime() of the last LOOT_OPENED (see grace period below)
+    lootAt = 0,                    -- GetTime() pending loot was last added (see stale-loot expiry)
     ah = false,                    -- auction house window is open
+    trainer = false,               -- class trainer window is open
+    trainerClosedAt = 0,
+    taxi = false,                  -- taxi map is open
+    taxiClosedAt = 0,
+    trade = false,                 -- trade window is open
+    tradeClosedAt = 0,
+    bank = false,                  -- a bank frame is open (personal, guild or warband)
+    bankClosedAt = 0,
 }
+
+-- A context window counts as active while open, and for a few seconds
+-- after it closes: the money change can arrive after the close (the
+-- loot window taught us that — auto-loot closes it before PLAYER_MONEY).
+function SG:ContextActive(name)
+    local p = self.pending
+    if p[name] then return true end
+    return GetTime() - (p[name .. "ClosedAt"] or 0) <= 5
+end
 SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
--- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move" }
+-- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move"|"refund" }
 SG.pendingMail = {}
 SG.claimedMail = {} -- keys already consumed, so identical re-sent mails can count again once gone
 SG.ready = false  -- set on PLAYER_LOGIN; ignore money noise before that
@@ -174,6 +195,28 @@ function SG:ReclassifySpendingSource(from, to, amount)
         self.lastGain.source = to
     end
     return n
+end
+
+-- Undo spending: an outbid refund returns money already spent, so it
+-- reverses the earlier expense instead of counting as income
+-- (Accountant's approach). Any part with no matching spend recorded
+-- (e.g. the bid was placed before tracking) is a money move, not
+-- income — the gold was his all along.
+function SG:ReverseSpending(char, amount, source)
+    local spent = math.min(amount, (char.spentBySource and char.spentBySource[source]) or 0)
+    if spent > 0 then
+        char.spentBySource[source] = char.spentBySource[source] - spent
+        char.outgoing = char.outgoing - spent
+        local today = self:TodayKey()
+        char.daily[today] = char.daily[today] or { income = 0, outgoing = 0 }
+        char.daily[today].outgoing = char.daily[today].outgoing - spent
+    end
+    local rest = amount - spent
+    if rest > 0 then
+        self:RecordMoneyMove(char, rest)
+    end
+    self:LogActivity(amount, "refund")
+    return spent
 end
 
 -- Move `amount` copper of income between source buckets (totals and
@@ -207,6 +250,10 @@ function SG:LogActivity(amount, source)
         win = (GetTime() - (p.lootWindowAt or 0) <= 3) and 1 or 0,
         merch = p.merchant and 1 or 0,
         quest = p.quest and 1 or 0,
+        trade = self:ContextActive("trade") and 1 or 0,
+        trainer = self:ContextActive("trainer") and 1 or 0,
+        taxi = self:ContextActive("taxi") and 1 or 0,
+        bank = self:ContextActive("bank") and 1 or 0,
     }
     table.insert(self.db.log, entry)
     while #self.db.log > 100 do table.remove(self.db.log, 1) end
@@ -282,6 +329,12 @@ function SG:OnMoney()
     char.lastMoney = now
     if delta == 0 then return end
     local p = self.pending
+    -- stale pending loot: a loot signal with no money change behind it
+    -- (window closed without taking, corpse despawned) must not claim
+    -- the next unrelated gain of the same size
+    if p.loot > 0 and GetTime() - (p.lootAt or 0) > 10 then
+        p.loot = 0
+    end
     self._lootAtDelta = p.loot -- pending loot when this money change arrived
 
     if delta < 0 then
@@ -305,6 +358,12 @@ function SG:OnMoney()
             p.sendMoney = 0
             self:RecordDelta(char, -fee, "mail")
             self:CheckLockedDip()
+            return
+        end
+        if self:ContextActive("bank") then
+            -- bank deposit (personal, guild or warband): a money move,
+            -- like mailing gold to an alt — not spending
+            self:RecordMoneyMove(char, delta)
             return
         end
         if (-delta) == self.MAIL_FEE and (p.mailSending or p.mailOpen) then
@@ -336,6 +395,26 @@ function SG:OnMoney()
             self:CheckLockedDip()
             return
         end
+        if self:ContextActive("trainer") then
+            -- learning a spell/ability at a class trainer
+            self:RecordDelta(char, delta, "trainer")
+            self:CheckLockedDip()
+            return
+        end
+        if self:ContextActive("taxi") then
+            -- flight master fare: the taxi map closes as the flight
+            -- starts, so the window may already be closed when the
+            -- money changes (hence the grace period in ContextActive)
+            self:RecordDelta(char, delta, "taxi")
+            self:CheckLockedDip()
+            return
+        end
+        if self:ContextActive("trade") then
+            -- gold given to another player in the trade window
+            self:RecordDelta(char, delta, "trade")
+            self:CheckLockedDip()
+            return
+        end
         self:RecordDelta(char, delta, p.merchant and "vendor" or "other")
         self:CheckLockedDip()
         return
@@ -348,6 +427,8 @@ function SG:OnMoney()
             self.claimedMail[key] = true
             if m.kind == "move" then
                 self:RecordMoneyMove(char, delta)
+            elseif m.kind == "refund" then
+                self:ReverseSpending(char, delta, "ah")
             else
                 self:RecordDelta(char, delta, "ah")
             end
@@ -357,6 +438,11 @@ function SG:OnMoney()
     if self:TakeOutgoingMove(delta) then
         -- transfer from another of your characters, recognised from
         -- the sender's ledger note even though the inbox scan missed it
+        self:RecordMoneyMove(char, delta)
+        return
+    end
+    if self:ContextActive("bank") then
+        -- bank withdrawal (personal, guild or warband): a money move, not income
         self:RecordMoneyMove(char, delta)
         return
     end
@@ -382,13 +468,42 @@ function SG:OnMoney()
         self:RecordDelta(char, remaining, "loot")
         return
     end
-    if p.quest then
+    -- Quest reward by exact amount (pH's method): QUEST_TURNED_IN
+    -- passes the money reward, so the reward is filed precisely
+    -- instead of relying on a sticky flag.
+    if p.questAmount and p.questAmount > 0 then
+        if GetTime() - (p.questAt or 0) > 10 then
+            p.questAmount = 0
+        else
+            local questPart = math.min(remaining, p.questAmount)
+            p.questAmount = p.questAmount - questPart
+            remaining = remaining - questPart
+            self:RecordDelta(char, questPart, "quest")
+            if remaining == 0 then
+                p.quest = false
+                p.questSeen = false
+                return
+            end
+        end
+    end
+    if p.questSeen then
+        -- QUEST_TURNED_IN fired: the amount above handled any reward,
+        -- so a turn-in with no money reward must not claim the next gain
+        p.quest = false
+        p.questSeen = false
+    elseif p.quest then
+        -- fallback for clients where QUEST_TURNED_IN never fires
         p.quest = false
         self:RecordDelta(char, remaining, "quest")
         return
     end
     if p.merchant then
         self:RecordDelta(char, remaining, "vendor")
+        return
+    end
+    if self:ContextActive("trade") then
+        -- gold received from another player in the trade window
+        self:RecordDelta(char, remaining, "trade")
         return
     end
     self:RecordDelta(char, remaining, "other")
@@ -411,7 +526,13 @@ function SG:ScanInbox()
             if not self.pendingMail[key] and not self.claimedMail[key] then
                 local kind = nil
                 if sender and sender:lower():find("auction") then
-                    kind = "ah"
+                    -- an "Outbid" mail returns a bid already paid: it
+                    -- reverses the earlier AH expense, it is not income
+                    if subject and subject:lower():find("outbid", 1, true) then
+                        kind = "refund"
+                    else
+                        kind = "ah"
+                    end
                 elseif self:OwnChar(sender) then
                     kind = "move"
                 end
@@ -459,6 +580,26 @@ SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; sel
 SG:Register("AUCTION_HOUSE_SHOW", function(self) self.pending.ah = true end)
 SG:Register("AUCTION_HOUSE_CLOSED", function(self) self.pending.ah = false end)
 
+-- the four contexts added in v1.0.15: each counts while open and for
+-- a few seconds after closing (ContextActive), because the money
+-- change can arrive after the close
+SG:Register("TRAINER_SHOW", function(self) self.pending.trainer = true end)
+SG:Register("TRAINER_CLOSED", function(self) self.pending.trainer = false; self.pending.trainerClosedAt = GetTime() end)
+SG:Register("TAXIMAP_OPENED", function(self) self.pending.taxi = true end)
+SG:Register("TAXIMAP_CLOSED", function(self) self.pending.taxi = false; self.pending.taxiClosedAt = GetTime() end)
+SG:Register("TRADE_SHOW", function(self) self.pending.trade = true end)
+SG:Register("TRADE_CLOSED", function(self) self.pending.trade = false; self.pending.tradeClosedAt = GetTime() end)
+-- Bank frames: which events fire is disputed — Gold Digger says
+-- The War Within folded guild/warband bank into BANKFRAME_OPENED /
+-- BANKFRAME_CLOSED, while Warband Accountant and retail Accountant
+-- still register GUILDBANKFRAME_OPENED / CLOSED. Register both, so
+-- whichever the Forever client fires is caught. A bank deposit or
+-- withdrawal is a money move either way (personal, guild or warband).
+SG:Register("GUILDBANKFRAME_OPENED", function(self) self.pending.bank = true end)
+SG:Register("GUILDBANKFRAME_CLOSED", function(self) self.pending.bank = false; self.pending.bankClosedAt = GetTime() end)
+SG:Register("BANKFRAME_OPENED", function(self) self.pending.bank = true end)
+SG:Register("BANKFRAME_CLOSED", function(self) self.pending.bank = false; self.pending.bankClosedAt = GetTime() end)
+
 -- Scan the loot window for coin slots (FonzAppraiser's approach):
 -- the money is sitting in the window as a coin slot before it is ever
 -- taken, so this does not depend on chat text at all. Works for corpse
@@ -476,6 +617,7 @@ function SG:ScanLootWindow()
     end
     if total > 0 then
         self.pending.loot = self.pending.loot + total
+        self.pending.lootAt = GetTime()
         self.lastCoinScan = { amount = total, at = GetTime() }
     end
 end
@@ -486,6 +628,13 @@ SG:Register("LOOT_OPENED", function(self)
 end)
 SG:Register("LOOT_CLOSED", function(self) end) -- the timestamp is what matters, not the close
 
+SG:Register("QUEST_TURNED_IN", function(self, questID, xpReward, moneyReward)
+    self.pending.questSeen = true
+    if moneyReward and moneyReward > 0 then
+        self.pending.questAmount = (self.pending.questAmount or 0) + moneyReward
+        self.pending.questAt = GetTime()
+    end
+end)
 SG:Register("QUEST_TURN_IN_COMPLETE", function(self) self.pending.quest = true end)
 
 -- Parse "You loot 12 Gold, 34 Silver, 56 Copper." (or just the
@@ -549,6 +698,7 @@ function SG:OnLootMoneyMessage(event, msg)
         return
     end
     self.pending.loot = self.pending.loot + amount -- accumulate, don't overwrite
+    self.pending.lootAt = GetTime()
 end
 
 SG:Register("CHAT_MSG_MONEY", function(self, msg) self:OnLootMoneyMessage("CHAT_MSG_MONEY", msg) end)

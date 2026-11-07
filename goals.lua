@@ -270,7 +270,7 @@ function SG:AnnounceGoalComplete(goal)
 end
 
 function SG:IncomeBySource()
-    local t = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 }
+    local t = { ah = 0, vendor = 0, quest = 0, loot = 0, trade = 0, other = 0 }
     for _, char in pairs(self.db.chars) do
         for k, v in pairs(char.bySource or {}) do
             t[k] = (t[k] or 0) + v
@@ -280,7 +280,7 @@ function SG:IncomeBySource()
 end
 
 function SG:SpendingBySource()
-    local t = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, other = 0 }
+    local t = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, trade = 0, trainer = 0, taxi = 0, other = 0 }
     for _, char in pairs(self.db.chars) do
         for k, v in pairs(char.spentBySource or {}) do
             t[k] = (t[k] or 0) + v

@@ -265,6 +265,126 @@ return function(stubs, ADDON)
         assertEq(SG:Char().spentBySource.other, 100)
     end)
 
+    test("trainer: learning a spell at a trainer is training spending", function()
+        local SG = fresh(100000)
+        fire(SG, "TRAINER_SHOW")
+        setMoney(SG, 99000) -- 10s training cost
+        assertEq(SG:Char().spentBySource.trainer, 1000)
+        assertEq(SG:Char().outgoing, 1000)
+        fire(SG, "TRAINER_CLOSED")
+        stubs.state.time = stubs.state.time + 10 -- past the grace period
+        setMoney(SG, 98000)
+        assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("taxi: a fare paid as the taxi map closes is travel spending", function()
+        -- the map closes as the flight starts, so the money can arrive
+        -- after TAXIMAP_CLOSED; the grace period covers it
+        local SG = fresh(100000)
+        fire(SG, "TAXIMAP_OPENED")
+        fire(SG, "TAXIMAP_CLOSED")
+        setMoney(SG, 99900)
+        assertEq(SG:Char().spentBySource.taxi, 100)
+        stubs.state.time = stubs.state.time + 10
+        setMoney(SG, 99800)
+        assertEq(SG:Char().spentBySource.other, 100)
+    end)
+
+    test("trade: gold given and received in the trade window is trading", function()
+        local SG = fresh(100000)
+        fire(SG, "TRADE_SHOW")
+        setMoney(SG, 90000) -- gave 10g to another player
+        assertEq(SG:Char().spentBySource.trade, 10000)
+        setMoney(SG, 95000) -- received 5g back
+        assertEq(SG:Char().bySource.trade, 5000)
+        assertEq(SG:Char().income, 5000)
+        fire(SG, "TRADE_CLOSED")
+        stubs.state.time = stubs.state.time + 10
+        setMoney(SG, 94000)
+        assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("bank: deposits and withdrawals are money moves, not spending/income", function()
+        -- guild bank events are disputed (Gold Digger says The War
+        -- Within folded them into BANKFRAME_*), so both event families
+        -- count; a personal-bank move is a move either way
+        local SG = fresh(100000)
+        fire(SG, "GUILDBANKFRAME_OPENED")
+        setMoney(SG, 50000) -- deposited 50g
+        assertEq(SG:Char().moneyMoves, 50000)
+        assertEq(SG:Char().outgoing, 0)
+        setMoney(SG, 70000) -- withdrew 20g
+        assertEq(SG:Char().moneyMoves, 70000)
+        assertEq(SG:Char().income, 0)
+        fire(SG, "GUILDBANKFRAME_CLOSED")
+        stubs.state.time = stubs.state.time + 10 -- past the grace period
+        setMoney(SG, 60000)
+        assertEq(SG:Char().spentBySource.other, 10000)
+        -- personal bank via BANKFRAME_* behaves the same
+        fire(SG, "BANKFRAME_OPENED")
+        setMoney(SG, 10000)
+        assertEq(SG:Char().moneyMoves, 120000)
+        assertEq(SG:Char().outgoing, 10000)
+    end)
+
+    test("ah: an outbid refund reverses the earlier listing expense, not income", function()
+        local SG = fresh(100000)
+        fire(SG, "AUCTION_HOUSE_SHOW")
+        setMoney(SG, 99000) -- 10s bid placed: AH spending
+        assertEq(SG:Char().spentBySource.ah, 1000)
+        stubs.state.inbox = { { sender = "Auction House", subject = "Outbid on Copper Ore", money = 1000 } }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        setMoney(SG, 100000) -- the refund arrives by mail
+        assertEq(SG:Char().spentBySource.ah, 0) -- expense reversed
+        assertEq(SG:Char().outgoing, 0)
+        assertEq(SG:Char().income, 0) -- not income
+        assertEq(SG:Char().bySource.ah, 0)
+    end)
+
+    test("ah: an outbid refund bigger than the recorded spend is a move for the rest", function()
+        local SG = fresh(100000)
+        stubs.state.inbox = { { sender = "Auction House", subject = "Outbid on Copper Ore", money = 1500 } }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        setMoney(SG, 101500) -- refund, but no bid was recorded as spent
+        assertEq(SG:Char().income, 0)
+        assertEq(SG:Char().moneyMoves, 1500)
+    end)
+
+    test("quest: QUEST_TURNED_IN files the exact money reward", function()
+        local SG = fresh(0)
+        fire(SG, "QUEST_TURNED_IN", 12345, 100, 5000)
+        setMoney(SG, 5000)
+        assertEq(SG:Char().bySource.quest, 5000)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("quest: a turn-in with no money reward does not claim the next gain", function()
+        local SG = fresh(0)
+        fire(SG, "QUEST_TURNED_IN", 12345, 100, 0)
+        fire(SG, "QUEST_TURN_IN_COMPLETE")
+        setMoney(SG, 5000) -- unrelated gain after a no-reward turn-in
+        assertEq(SG:Char().bySource.other, 5000)
+        assertEq(SG:Char().bySource.quest, 0)
+    end)
+
+    test("quest: a batched delta splits the reward from the rest", function()
+        local SG = fresh(0)
+        fire(SG, "QUEST_TURNED_IN", 12345, 100, 5000)
+        setMoney(SG, 6000) -- 50s quest reward + 10s from elsewhere
+        assertEq(SG:Char().bySource.quest, 5000)
+        assertEq(SG:Char().bySource.other, 1000)
+    end)
+
+    test("loot: pending loot expires, so it cannot claim a later unrelated gain", function()
+        local SG = fresh(0)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 50 Silver.")
+        assertEq(SG.pending.loot, 5000)
+        stubs.state.time = stubs.state.time + 11 -- past the 10s expiry
+        setMoney(SG, 5000) -- same amount, but the loot never arrived
+        assertEq(SG:Char().bySource.other, 5000)
+        assertEq(SG:Char().bySource.loot, 0)
+    end)
+
     test("reclassify: spending can be moved between categories", function()
         local SG = fresh(100000)
         setMoney(SG, 99900) -- 1s spend, filed as other

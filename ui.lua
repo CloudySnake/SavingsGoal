@@ -5,8 +5,8 @@ local mainFrame = nil
 local content = nil
 local lookBtn = nil -- Look toggle button; its text follows the current look
 
-local SOURCE_LABELS = { ah = "Auction House", vendor = "Vendoring", quest = "Quests", loot = "Loot", other = "Other" }
-local SPENDING_LABELS = { ah = "Auction House", vendor = "Vendor purchases", repair = "Repairs", mail = "Mail fees", other = "Other" }
+local SOURCE_LABELS = { ah = "Auction House", vendor = "Vendoring", quest = "Quests", loot = "Loot", trade = "Trading", other = "Other" }
+local SPENDING_LABELS = { ah = "Auction House", vendor = "Vendor purchases", repair = "Repairs", mail = "Mail fees", trade = "Trading", trainer = "Training", taxi = "Travel", other = "Other" }
 
 local function smallButton(parent, text, width, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -254,7 +254,7 @@ function SG:RefreshUI()
 
     -- income by source
     header("INCOME BY SOURCE", "Income by source (account lifetime)")
-    for _, key in ipairs({ "ah", "vendor", "quest", "loot", "other" }) do
+    for _, key in ipairs({ "ah", "vendor", "quest", "loot", "trade", "other" }) do
         local amt = (self:IncomeBySource())[key] or 0
         if amt > 0 then
             local l = label(content, string.format("  %s: %s", SOURCE_LABELS[key], self:FormatGold(amt)), 11, mr, mg, mb)
@@ -269,7 +269,7 @@ function SG:RefreshUI()
     for _, v in pairs(spent) do if v > 0 then anySpent = true end end
     if anySpent then
         header("SPENDING BY SOURCE", "Spending by source (account lifetime)")
-        for _, key in ipairs({ "vendor", "repair", "mail", "ah", "other" }) do
+        for _, key in ipairs({ "vendor", "repair", "mail", "ah", "trade", "trainer", "taxi", "other" }) do
             local amt = spent[key] or 0
             if amt > 0 then
                 local l = label(content, string.format("  %s: %s", SPENDING_LABELS[key], self:FormatGold(amt)), 11, mr, mg, mb)

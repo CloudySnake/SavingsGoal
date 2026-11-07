@@ -102,8 +102,8 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
     elseif cmd == "reclassify" then
         local amountText, from, to = rest:match("^(%S+)%s+(%S+)%s+(%S+)%s*$")
         local amount = amountText and SG:ParseGold(amountText)
-        local incomeSources = { ah = true, vendor = true, quest = true, loot = true, other = true }
-        local spendingSources = { ah = true, vendor = true, repair = true, mail = true, other = true }
+        local incomeSources = { ah = true, vendor = true, quest = true, loot = true, trade = true, other = true }
+        local spendingSources = { ah = true, vendor = true, repair = true, mail = true, trade = true, trainer = true, taxi = true, other = true }
         from = from and from:lower()
         to = to and to:lower()
         -- income first, then spending: the same command fixes a
@@ -121,7 +121,7 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " of " .. kind .. " from '" .. from .. "' to '" .. to .. "'")
             SG:RefreshUI(); SG:RefreshBroker()
         else
-            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, other; spending: ah, vendor, repair, mail, other")
+            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, trade, other; spending: ah, vendor, repair, mail, trade, trainer, taxi, other")
         end
     elseif cmd == "last" then
         local g = SG.lastGain
@@ -139,9 +139,10 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
         else
             for i = math.max(1, #log - 9), #log do
                 local e = log[i]
-                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s)",
+                local function yn(v) return v == 1 and "yes" or "no" end
+                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s, trade %s, trainer %s, taxi %s, bank %s)",
                     e.t, SG:FormatGold(e.amount), e.source, SG:FormatGold(e.loot or 0),
-                    e.win == 1 and "yes" or "no", e.merch == 1 and "yes" or "no", e.quest == 1 and "yes" or "no"))
+                    yn(e.win), yn(e.merch), yn(e.quest), yn(e.trade), yn(e.trainer), yn(e.taxi), yn(e.bank)))
             end
         end
     elseif cmd == "minimap" then
