@@ -158,8 +158,8 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             for i = math.max(1, #log - 9), #log do
                 local e = log[i]
                 local function yn(v) return v == 1 and "yes" or "no" end
-                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s, trade %s, trainer %s, taxi %s, bank %s, barber %s, transmog %s, talent %s, lfg %s)",
-                    e.t, SG:FormatGold(e.amount), e.source, SG:FormatGold(e.loot or 0),
+                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, repair %s, window %s, merch %s, quest %s, trade %s, trainer %s, taxi %s, bank %s, barber %s, transmog %s, talent %s, lfg %s)",
+                    e.t, SG:FormatGold(e.amount), e.source, SG:FormatGold(e.loot or 0), SG:FormatGold(e.repair or 0),
                     yn(e.win), yn(e.merch), yn(e.quest), yn(e.trade), yn(e.trainer), yn(e.taxi), yn(e.bank),
                     yn(e.barber), yn(e.transmog), yn(e.talent), yn(e.lfg)))
             end

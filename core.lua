@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.18"
+SG.VERSION = "1.0.19"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -272,6 +272,7 @@ function SG:LogActivity(amount, source)
         amount = amount,
         source = source,
         loot = self._lootAtDelta or 0,
+        repair = self._repairAtDelta or 0,
         win = (GetTime() - (p.lootWindowAt or 0) <= 3) and 1 or 0,
         merch = p.merchant and 1 or 0,
         quest = p.quest and 1 or 0,
@@ -377,6 +378,7 @@ function SG:OnMoney()
         p.loot = 0
     end
     self._lootAtDelta = p.loot -- pending loot when this money change arrived
+    self._repairAtDelta = p.repair or 0 -- pending repair cost (hook or durability flag) at the time
 
     if delta < 0 then
         -- gold sent by mail: recorded as a money move, never as spending.
@@ -932,6 +934,7 @@ function SG:OnDurabilityChange()
     if newCost >= p.repairCostBase then return end
     local costDrop = p.repairCostBase - newCost
     p.repairCostBase = newCost
+    self._repairAtDelta = costDrop -- what this repair cost (for /sg log)
     if p.repair and p.repair > 0 then return end -- Repair All hook owns it
     local char = self:Char()
     local cash = GetMoney()

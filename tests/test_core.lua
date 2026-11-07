@@ -207,6 +207,22 @@ return function(stubs, ADDON)
         assertEq(SG:Char().spentBySource.vendor, 0)
     end)
 
+    test("log: a repair change records the pending repair cost", function()
+        -- the diagnostic for a repair filed as "other": the log shows
+        -- whether a repair cost was pending when the money changed
+        local SG = fresh(100000)
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 2500
+        stubs.callHook("RepairAllItems")
+        setMoney(SG, 97500)
+        local log = SG:ActivityLog()
+        assertEq(log[#log].source, "repair")
+        assertEq(log[#log].repair, 2500)
+        setMoney(SG, 96500) -- a plain purchase, no repair pending
+        assertEq(log[#log].source, "vendor")
+        assertEq(log[#log].repair, 0)
+    end)
+
     test("repair: a stale flag from a guild-paid repair does not claim a later purchase", function()
         -- the guild paid the whole bill, so no delta arrived and the
         -- flag survived; a purchase minutes later, smaller than the
