@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.9"
+SG.VERSION = "1.0.10"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -169,6 +169,8 @@ end
 function SG:RecordDelta(char, delta, source)
     local today = self:TodayKey()
     char.daily[today] = char.daily[today] or { income = 0, outgoing = 0 }
+    -- last gain, for /sg last diagnostics ("what did that loot just file as?")
+    self.lastGain = { amount = delta, source = source, pendingLoot = self._lootAtDelta or 0 }
     if delta > 0 then
         char.income = char.income + delta
         char.daily[today].income = char.daily[today].income + delta
@@ -227,6 +229,7 @@ function SG:OnMoney()
     char.lastMoney = now
     if delta == 0 then return end
     local p = self.pending
+    self._lootAtDelta = p.loot -- pending loot when this money change arrived
 
     if delta < 0 then
         -- gold sent by mail: recorded as a money move, never as spending.

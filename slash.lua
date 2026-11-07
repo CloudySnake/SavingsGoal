@@ -11,6 +11,8 @@ local function help()
     print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
     print("  /sg look <classic|modern> — switch the info-screen look")
     print("  /sg move <50s|1g> — reclassify that much 'Other' income as a transfer from your own alt")
+    print("  /sg reclassify <50s|1g> <from> <to> — move income between categories, e.g. /sg reclassify 50s other loot")
+    print("  /sg last — show what the last gain/spend was filed as")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -95,6 +97,26 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             SG:RefreshUI(); SG:RefreshBroker()
         else
             print("|cff33ff99SavingsGoal:|r usage: /sg move <50s|1g> — nothing in 'Other' income to reclassify")
+        end
+    elseif cmd == "reclassify" then
+        local amountText, from, to = rest:match("^(%S+)%s+(%S+)%s+(%S+)%s*$")
+        local amount = amountText and SG:ParseGold(amountText)
+        local sources = { ah = true, vendor = true, quest = true, loot = true, other = true }
+        from = from and from:lower()
+        to = to and to:lower()
+        local moved = (amount and sources[from] and sources[to]) and SG:ReclassifyIncomeSource(from, to, amount) or 0
+        if moved > 0 then
+            print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " from '" .. from .. "' to '" .. to .. "'")
+            SG:RefreshUI(); SG:RefreshBroker()
+        else
+            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — from/to are ah, vendor, quest, loot or other")
+        end
+    elseif cmd == "last" then
+        local g = SG.lastGain
+        if g then
+            print("|cff33ff99SavingsGoal:|r last change: " .. SG:FormatGold(g.amount) .. " filed as '" .. g.source .. "' (pending loot at the time: " .. SG:FormatGold(g.pendingLoot or 0) .. ")")
+        else
+            print("|cff33ff99SavingsGoal:|r no money change recorded yet this session")
         end
     elseif cmd == "minimap" then
         SG:ToggleMinimap()

@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.9). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.10). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -168,6 +168,8 @@ If an amount was already misfiled before this version, fix it on the receiving c
 
 **The rest:** Auction House mail is Auction House, vendoring while a merchant window is open is Vendoring, a quest turn-in is Quests, and anything with no other explanation is Other. Gold mailed between your own characters is a money move, never income or spending (see above).
 
+**Fixing a misfiled amount (v1.0.10):** the loot fix only applies to new loot — anything filed as "Other" before the fix stays in "Other" until you move it. On the character that earned it: `/sg reclassify <amount> other loot` (e.g. `/sg reclassify 50s other loot`). Categories are ah, vendor, quest, loot or other; totals don't change, only the bucket. If loot still lands in "Other" after updating, loot something and run `/sg last` straight away — it reports what the gain was filed as and how much pending loot the addon had seen at the time, which shows whether the loot message ever reached it.
+
 ## What the info screen shows (v1.0.5 polish)
 
 - **Goal bars** show a % complete, e.g. `25g / 100g (25%)`, and change colour as you get closer: green while working, gold at 75%+, bright green when complete.
@@ -188,6 +190,8 @@ Ideas from other gold addons that are *not* in SavingsGoal yet, deliberately: a 
 /sg keep <50%|1g>            hold back for day-to-day spending (0% switches it off)
 /sg look <classic|modern>   switch the info-screen look
 /sg move <50s|1g>            reclassify that much 'Other' income as a transfer from your own alt
+/sg reclassify <50s|1g> <from> <to>  move income between categories, e.g. /sg reclassify 50s other loot
+/sg last                     show what the last gain/spend was filed as (and pending loot at the time)
 /sg minimap                  toggle the minimap button
 /sg reset                    wipe ALL SavingsGoal data (asks first)
 ```
