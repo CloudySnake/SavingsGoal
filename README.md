@@ -6,8 +6,8 @@ Built blind (no beta access) — every API used is long-stable, but treat launch
 
 ## Install
 
-1. Copy the `SavingsGoal` folder into `World of Warcraft/_classic_beta_/Interface/AddOns/`
-   (adjust if Blizzard names the Forever folder differently at launch).
+1. Copy the `SavingsGoal` folder into `World of Warcraft/_forever_/Interface/AddOns/`
+   (live folder since launch 4 Nov 2026 — `_classic_beta_` was the beta folder only).
 2. Optional but recommended: install **LibStub**, **LibDataBroker-1.1**, and **LibDBIcon-1.0**
    (they ship with Titan Panel, so installing Titan Panel covers all three).
 3. At the character select screen: AddOns → tick **SavingsGoal** (and "Load out of date AddOns" if it asks).
