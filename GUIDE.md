@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.10). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.11). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -167,6 +167,10 @@ If an amount was already misfiled before this version, fix it on the receiving c
 **Mail fees:** postage (30c per mail) is now its own spending category, "Mail fees". If you mail gold, the sent gold is still a money move and the 30c postage is split off as a mail fee; a mail with no gold attached is charged the same way while the mailbox is open. Spending is shown in its own "Spending by source" section on the info screen (Vendoring / repairs, Mail fees, Auction House, Other) — previously spending was tracked but never displayed, so mail fees were invisible as well as miscategorised.
 
 **The rest:** Auction House mail is Auction House, vendoring while a merchant window is open is Vendoring, a quest turn-in is Quests, and anything with no other explanation is Other. Gold mailed between your own characters is a money move, never income or spending (see above).
+
+**Repairs (v1.0.11):** repair bills are their own spending category, "Repairs", in the Spending by source section — they used to be lumped in with vendor purchases. This follows the established pattern from GoldLedger and Gold Digger: hook `RepairAllItems()` and capture `GetRepairAllCost()` *before* the money changes, because checking the cost after the repair always returns 0 (the gear is already fixed). If guild funds cover part of the bill, the part you paid is still filed as Repairs; a purchase bigger than the repair bill is not mistaken for one. One limit: repairing a single item with the repair cursor (rather than Repair All) still lands in Vendor purchases, and vendor spending recorded before v1.0.11 includes old repair bills — those can't be separated after the fact.
+
+**How other addons do it:** SavingsGoal's detection now matches GoldLedger's published table — Vendor = merchant window open, Repair = `RepairAllItems()` hook, Auction House = AH window + AH mail sender, Mail = mailbox open, Quest = quest turn-in, Loot = loot window (plus the "You loot …" chat message), Trade = trade window (not tracked here). Accountant, the long-running original, uses the same event/context approach with categories for training, taxi fares, trading, mail, looting, quests, repairs, merchant and auction house.
 
 **Fixing a misfiled amount (v1.0.10):** the loot fix only applies to new loot — anything filed as "Other" before the fix stays in "Other" until you move it. On the character that earned it: `/sg reclassify <amount> other loot` (e.g. `/sg reclassify 50s other loot`). Categories are ah, vendor, quest, loot or other; totals don't change, only the bucket. If loot still lands in "Other" after updating, loot something and run `/sg last` straight away — it reports what the gain was filed as and how much pending loot the addon had seen at the time, which shows whether the loot message ever reached it.
 

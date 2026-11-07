@@ -9,6 +9,7 @@ M.state = {
     realmName = "Testrealm",
     inbox = {},                -- { sender=, subject=, money= }
     time = 1000000,            -- GetTime()
+    repairCost = 0,            -- GetRepairAllCost()
 }
 
 M.hooks = {}   -- hooksecurefunc registry
@@ -21,6 +22,7 @@ function M.reset()
     M.state.realmName = "Testrealm"
     M.state.inbox = {}
     M.state.time = 1000000
+    M.state.repairCost = 0
     M.hooks = {}
     M.frames = {}
     M.fontstrings = {}
@@ -32,6 +34,8 @@ end
 
 -- ------------------------------------------------------------ API surface --
 function GetMoney() return M.state.money end
+function GetRepairAllCost() return M.state.repairCost end
+function RepairAllItems(...) end -- hooked by core.lua; tests drive it via callHook
 function UnitName(unit) return M.state.playerName end
 function GetRealmName() return M.state.realmName end
 function GetTime() return M.state.time end

@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.10"
+SG.VERSION = "1.0.11"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -97,7 +97,7 @@ local function newCharRecord()
     return {
         income = 0, outgoing = 0,
         bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 },
-        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, other = 0 },
+        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, other = 0 },
         moneyMoves = 0, -- gold moved between own chars (tracked, excluded from surplus)
         daily = {},    -- ["YYYY-MM-DD"] = { income = n, outgoing = n }
         lastMoney = 0,
@@ -147,6 +147,8 @@ SG.pending = {
     sendMoney = 0,                 -- gold attached to outgoing mail
     mailSending = false,           -- a mail send is in progress (fee may follow)
     mailOpen = false,              -- mailbox is open
+    repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
+    lootWindow = false,            -- loot window is open
 }
 SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
 -- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move" }
@@ -261,6 +263,20 @@ function SG:OnMoney()
             self:CheckLockedDip()
             return
         end
+        if p.repair and p.repair > 0 then
+            -- a Repair All click captured its cost in the hook below.
+            -- Exact match, or less than the captured cost (guild funds
+            -- covered part of it), is a repair. More than the cost is
+            -- not the repair delta at all — it's a purchase, so the
+            -- stale flag is dropped and it falls through to vendor.
+            local cost = p.repair
+            p.repair = 0
+            if (-delta) <= cost then
+                self:RecordDelta(char, delta, "repair")
+                self:CheckLockedDip()
+                return
+            end
+        end
         self:RecordDelta(char, delta, p.merchant and "vendor" or "other")
         self:CheckLockedDip()
         return
@@ -297,6 +313,13 @@ function SG:OnMoney()
         remaining = remaining - lootPart
         self:RecordDelta(char, lootPart, "loot")
         if remaining == 0 then return end
+    end
+    -- GoldLedger's other loot signal: if the loot window is open when
+    -- the money arrives, it's loot even if no loot chat message ever
+    -- reached us (the case behind "loot still shows as Other").
+    if p.lootWindow then
+        self:RecordDelta(char, remaining, "loot")
+        return
     end
     if p.quest then
         p.quest = false
@@ -370,7 +393,10 @@ end)
 SG:Register("PLAYER_MONEY", function(self) self:OnMoney() end)
 
 SG:Register("MERCHANT_SHOW", function(self) self.pending.merchant = true end)
-SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false end)
+SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0 end)
+
+SG:Register("LOOT_OPENED", function(self) self.pending.lootWindow = true end)
+SG:Register("LOOT_CLOSED", function(self) self.pending.lootWindow = false end)
 
 SG:Register("QUEST_TURN_IN_COMPLETE", function(self) self.pending.quest = true end)
 
@@ -397,6 +423,21 @@ SG:Register("MAIL_INBOX_UPDATE", function(self) self:ScanInbox() end)
 
 SG:Register("MAIL_SHOW", function(self) self.pending.mailOpen = true end)
 SG:Register("MAIL_CLOSED", function(self) self.pending.mailOpen = false; self.pending.mailSending = false end)
+
+-- Repairs: the established approach (GoldLedger, Gold Digger) is to
+-- hook RepairAllItems and capture GetRepairAllCost() there, *before*
+-- the money event fires. Checking the cost after the fact always
+-- returns 0, because the gear is already repaired by then. The hook
+-- runs when the player clicks Repair All; the next money delta that
+-- matches (or is less than, if guild funds covered part of it) is the
+-- repair bill. Guild-only repairs deduct nothing from the player, so
+-- no delta arrives and the flag is dropped when the merchant closes.
+if RepairAllItems then
+    hooksecurefunc("RepairAllItems", function()
+        local cost = GetRepairAllCost() or 0
+        if cost > 0 then SG.pending.repair = cost end
+    end)
+end
 
 -- outgoing mail: hook the money setter; MAIL_SEND_SUCCESS confirms it sent
 hooksecurefunc("SetSendMailMoney", function(copper)

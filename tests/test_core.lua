@@ -110,6 +110,47 @@ return function(stubs, ADDON)
         assertEq(SG:SpendingBySource().mail, 30)
     end)
 
+    test("repair: Repair All click is filed as Repairs, not Vendor", function()
+        local SG = fresh(100000)
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 2500
+        stubs.callHook("RepairAllItems")
+        setMoney(SG, 97500)
+        local char = SG:Char()
+        assertEq(char.spentBySource.repair, 2500)
+        assertEq(char.spentBySource.vendor, 0)
+        assertEq(char.outgoing, 2500)
+        assertEq(SG:SpendingBySource().repair, 2500)
+    end)
+
+    test("repair: guild covering part of the bill still files as Repairs", function()
+        local SG = fresh(100000)
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 5000
+        stubs.callHook("RepairAllItems")
+        setMoney(SG, 97000) -- player paid 3000 of a 5000 bill
+        assertEq(SG:Char().spentBySource.repair, 3000)
+    end)
+
+    test("repair: a purchase bigger than the repair cost is not a repair", function()
+        local SG = fresh(100000)
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 2500
+        stubs.callHook("RepairAllItems")
+        setMoney(SG, 96000) -- bought something for 4000; repair never happened
+        assertEq(SG:Char().spentBySource.repair, 0)
+        assertEq(SG:Char().spentBySource.vendor, 4000)
+    end)
+
+    test("loot: money arriving with the loot window open is loot", function()
+        -- GoldLedger's other loot signal: no chat message needed.
+        local SG = fresh(0)
+        fire(SG, "LOOT_OPENED")
+        setMoney(SG, 5000)
+        assertEq(SG:Char().bySource.loot, 5000)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
     test("mail fee: postage on a mail with no gold attached", function()
         local SG = fresh(100000)
         fire(SG, "MAIL_SHOW")
