@@ -4,6 +4,8 @@ An account-wide savings-goal addon for **WoW Forever** (Interface 16001). Track 
 
 Built blind (no beta access) — every API used is long-stable, but treat launch day as the first real test.
 
+See **[GUIDE.md](GUIDE.md)** for the full guide: moving the Titan Panel display, what safe-to-spend / surplus / rate / keep mean, and why a goal can look like it's doing nothing. CurseForge publication is planned — until then, install from GitHub as below.
+
 ## Install
 
 1. Copy the `SavingsGoal` folder into `World of Warcraft/_forever_/Interface/AddOns/`
@@ -38,6 +40,7 @@ Built blind (no beta access) — every API used is long-stable, but treat launch
 | `ui.lua` | Info screen + dialogs |
 | `slash.lua` | `/sg` commands |
 | `SPEC.md` | The agreed spec this was built from |
+| `GUIDE.md` | User guide — Titan Panel, safe-to-spend, rate/keep, troubleshooting |
 
 ## Launch-day checklist
 
