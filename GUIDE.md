@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.5). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.6). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -141,6 +141,15 @@ To check which one it is, open `/sg` and look at:
 
 `/sg list` prints the same numbers to chat.
 
+## Look: Modern or Classic (v1.0.6)
+
+The info screen has two looks, and you can switch any time — the choice is saved per account.
+
+- **Modern** (default): flat dark bars, gold section headers with thin dividers, safe-to-spend big and gold on the left with the account total muted on the right, muted secondary text.
+- **Classic**: the pre-1.0.6 layout — single-sentence headline ("Safe to spend: … Account total: …"), plain section titles, glossy Blizzard bars.
+
+Switch with the **Look** button at the top of the info screen (it shows the current look), or `/sg look classic` / `/sg look modern`. The outer window stays Blizzard's in both looks, so the title bar, close button, drag and Esc all keep working.
+
 ## What the info screen shows (v1.0.5 polish)
 
 - **Goal bars** show a % complete, e.g. `25g / 100g (25%)`, and change colour as you get closer: green while working, gold at 75%+, bright green when complete.
@@ -159,6 +168,7 @@ Ideas from other gold addons that are *not* in SavingsGoal yet, deliberately: a 
 /sg seed <name> <gold>       allocate current gold to a goal
 /sg rate <name> <50%|10g>    set a goal's savings rate
 /sg keep <50%|1g>            hold back for day-to-day spending (0% switches it off)
+/sg look <classic|modern>   switch the info-screen look
 /sg minimap                  toggle the minimap button
 /sg reset                    wipe ALL SavingsGoal data (asks first)
 ```

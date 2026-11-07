@@ -217,7 +217,7 @@ return function(stubs, ADDON)
     end
 
     -- Regression test for 7 Nov 2026 (screenshot): the info screen showed
-    -- overlapping text — "No goals yet" over the goal row, "Characters"
+    -- overlapping text — "No goals yet" over the goal row, "CHARACTERS"
     -- twice — because wipe() only hid child frames, and labels are
     -- FontStrings, which GetChildren() never returns.
     test("RefreshUI hides stale labels when a goal is added", function()
@@ -228,11 +228,11 @@ return function(stubs, ADDON)
         char.daily[SG:TodayKey()] = { income = 7, outgoing = 0 }
         SG:ShowUI()
         assertEq(countVisible("No goals yet — click Add goal to save for your first mount."), 1)
-        assertEq(countVisible("Characters"), 1)
+        assertEq(countVisible("CHARACTERS"), 1)
         SG:AddGoal("Epic Mount", 100)
         SG:RefreshUI()
         assertEq(countVisible("No goals yet — click Add goal to save for your first mount."), 0)
-        assertEq(countVisible("Characters"), 1)
+        assertEq(countVisible("CHARACTERS"), 1)
         assertEq(countVisible("1. Epic Mount"), 1)
     end)
 
@@ -319,6 +319,52 @@ return function(stubs, ADDON)
             if f._barValue == 250000 then found = true end
         end
         assertEq(found, true)
+    end)
+
+    test("Modern look: gold section headers, flat bars, split headline", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        char.daily[SG:TodayKey()] = { income = 20000, outgoing = 5000 }
+        char.bySource.other = 7
+        SG:AddGoal("Epic Mount", 100)
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("^GOALS$"), true)
+        assertEq(anyVisibleMatching("^INCOME BY SOURCE$"), true)
+        assertEq(anyVisibleMatching("^CHARACTERS$"), true)
+        assertEq(anyVisibleMatching("^Safe to spend:"), true)
+        assertEq(anyVisibleMatching("^Account:"), true)
+        -- flat bar texture, not the glossy Blizzard status-bar art
+        local flat = false
+        for _, f in ipairs(stubs.frames) do
+            if f._barTexture == "Interface\\Buttons\\WHITE8x8" then flat = true end
+        end
+        assertEq(flat, true)
+    end)
+
+    test("Classic look: plain titles, glossy bars, single headline", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        char.bySource.other = 7
+        char.daily[SG:TodayKey()] = { income = 7, outgoing = 0 }
+        SG:AddGoal("Epic Mount", 100)
+        SG:SetLook("classic")
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("^Characters$"), true)
+        assertEq(anyVisibleMatching("^CHARACTERS$"), false)
+        assertEq(anyVisibleMatching("Account total:"), true)
+        assertEq(anyVisibleMatching("^Account:"), false)
+        local glossy = false
+        for _, f in ipairs(stubs.frames) do
+            if f._barTexture == "Interface\\TargetingFrame\\UI-StatusBar" then glossy = true end
+        end
+        assertEq(glossy, true)
+        -- toggle back to modern in the same session
+        SG:ToggleLook()
+        SG:RefreshUI()
+        assertEq(anyVisibleMatching("^CHARACTERS$"), true)
+        assertEq(anyVisibleMatching("^Characters$"), false)
     end)
 
     test("BrokerText shows years for huge ETAs", function()

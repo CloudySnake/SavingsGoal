@@ -170,6 +170,28 @@ function SG:CharSafeToSpend(char)
     return math.max(0, math.min(char.lastMoney or 0, self:SafeToSpend()))
 end
 
+-- ------------------------------------------------------------ look --
+-- Classic vs Modern info-screen look. Modern is the default; Classic
+-- is the pre-1.0.6 layout (single-sentence headline, plain section
+-- titles, glossy Blizzard bars). Toggle in-game with /sg look, or the
+-- Look button on the info screen.
+function SG:Look()
+    return self.db.settings.look or "modern"
+end
+
+function SG:SetLook(mode)
+    mode = (mode or ""):lower()
+    if mode == "classic" or mode == "modern" then
+        self.db.settings.look = mode
+        return mode
+    end
+    return nil
+end
+
+function SG:ToggleLook()
+    return self:SetLook(self:Look() == "modern" and "classic" or "modern")
+end
+
 -- ------------------------------------------------------------ polish --
 -- % complete for a goal (0-100, capped), and the bar colour for it:
 -- green while working, gold at 75%+, bright green when complete.

@@ -63,6 +63,9 @@ local function newRegion(kind)
     function r:SetText(t) self._text = t or "" end
     function r:GetText() return self._text end
     function r:SetFont(...) end
+    function r:SetTextColor(r, g, b) self._textColor = { r, g, b } end
+    function r:SetJustifyH(...) end
+    function r:SetSize(...) end
     function r:SetPoint(...) end
     function r:Hide() self._shown = false end
     function r:Show() self._shown = true end
@@ -112,7 +115,7 @@ local function newFrame()
     end
     function f:SetScrollChild(child) self._scrollChild = child end
     -- StatusBar methods: record colour/value so polish tests can check them
-    function f:SetStatusBarTexture(...) end
+    function f:SetStatusBarTexture(t) self._barTexture = t end
     function f:SetStatusBarColor(r, g, b) self._barColor = { r, g, b } end
     function f:SetMinMaxValues(a, b) self._barMinMax = { a, b } end
     function f:SetValue(v) self._barValue = v end

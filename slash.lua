@@ -9,6 +9,7 @@ local function help()
     print("  /sg seed <name> <gold> — allocate current gold to a goal")
     print("  /sg rate <name> <50%|10g> — set the savings rate")
     print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
+    print("  /sg look <classic|modern> — switch the info-screen look")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -75,6 +76,15 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             SG:RefreshUI(); SG:RefreshBroker()
         else
             print("|cff33ff99SavingsGoal:|r usage: /sg keep <50%|1g> (0% switches it off)")
+        end
+    elseif cmd == "look" then
+        if rest == "" then
+            print("|cff33ff99SavingsGoal:|r look: " .. SG:Look() .. " (classic or modern)")
+        elseif SG:SetLook(rest) then
+            print("|cff33ff99SavingsGoal:|r look: " .. SG:Look())
+            SG:RefreshUI(); SG:RefreshBroker()
+        else
+            print("|cff33ff99SavingsGoal:|r usage: /sg look <classic|modern>")
         end
     elseif cmd == "minimap" then
         SG:ToggleMinimap()

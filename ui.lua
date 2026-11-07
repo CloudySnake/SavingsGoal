@@ -3,6 +3,7 @@ local SG = SavingsGoal
 
 local mainFrame = nil
 local content = nil
+local lookBtn = nil -- Look toggle button; its text follows the current look
 
 local SOURCE_LABELS = { ah = "Auction House", vendor = "Vendoring", quest = "Quests", loot = "Loot", other = "Other" }
 
@@ -14,10 +15,21 @@ local function smallButton(parent, text, width, onClick)
     return b
 end
 
-local function label(parent, text, size)
+-- Modern look (v1.0.6): flat dark panels, thin gold dividers, gold
+-- section headers, muted secondary text — the PlayerUIWoW / isiLive
+-- pattern of stripping the bulky classic chrome inside the window.
+-- The outer window deliberately stays BasicFrameTemplateWithInset:
+-- its title bar, close button, drag and Esc handling are Blizzard-tested
+-- on Forever, and replacing them with a custom BackdropTemplate shell
+-- would risk breaking exactly those bits.
+local GOLD_R, GOLD_G, GOLD_B = 1, 0.82, 0
+local MUTED_R, MUTED_G, MUTED_B = 0.78, 0.78, 0.78
+
+local function label(parent, text, size, r, g, b)
     local f = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f:SetFont("Fonts\\FRIZQT__.TTF", size or 12)
     f:SetText(text)
+    if r then f:SetTextColor(r, g, b) end
     return f
 end
 
@@ -37,7 +49,7 @@ end
 
 function SG:BuildUI()
     mainFrame = CreateFrame("Frame", "SavingsGoalFrame", UIParent, "BasicFrameTemplateWithInset")
-    mainFrame:SetSize(560, 600)
+    mainFrame:SetSize(580, 620)
     mainFrame:SetPoint("CENTER")
     mainFrame:SetMovable(true)
     mainFrame:EnableMouse(true)
@@ -58,11 +70,17 @@ function SG:BuildUI()
     end)
     keepBtn:SetPoint("RIGHT", addBtn, "LEFT", -6, 0)
 
+    lookBtn = smallButton(mainFrame, "Modern", 70, function()
+        SG:ToggleLook()
+        SG:RefreshUI()
+    end)
+    lookBtn:SetPoint("RIGHT", keepBtn, "LEFT", -6, 0)
+
     local scroll = CreateFrame("ScrollFrame", nil, mainFrame, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12, -60)
     scroll:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -32, 12)
     content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(500, 10)
+    content:SetSize(520, 10)
     scroll:SetScrollChild(content)
 end
 
@@ -94,36 +112,70 @@ function SG:RefreshUI()
     if not content then return end
     wipe(content)
     local y = -6
-    local W = 500
+    local W = 520
+    local modern = self:Look() == "modern"
+    -- muted secondary text only in the modern look; classic uses
+    -- Blizzard's default label colour throughout
+    local mr, mg, mb = modern and MUTED_R or nil, modern and MUTED_G or nil, modern and MUTED_B or nil
+    if lookBtn then lookBtn:SetText(modern and "Modern" or "Classic") end
 
     local function nextY(h) y = y - h; return y end
 
-    -- headline numbers
-    local head = label(content, string.format("Safe to spend: %s    Account total: %s",
-        self:FormatGold(self:SafeToSpend()), self:FormatGold(self:AccountGold())), 13)
-    head:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
+    -- section header: gold + thin divider in modern, plain title in classic
+    local function header(mText, cText)
+        if modern then
+            local h = label(content, mText, 12, GOLD_R, GOLD_G, GOLD_B)
+            h:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(20)
+            local div = content:CreateTexture(nil, "OVERLAY")
+            div:SetSize(W - 12, 1)
+            div:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
+            div:SetColorTexture(0.8, 0.65, 0.2, 0.5)
+            nextY(10)
+        elseif cText then
+            local h = label(content, cText, 13)
+            h:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(22)
+        end
+    end
+
+    if modern then
+        -- headline: safe-to-spend big and gold on the left, account total
+        -- muted on the right — a dashboard headline, not a sentence
+        local head = label(content, "Safe to spend: " .. self:FormatGold(self:SafeToSpend()),
+            14, GOLD_R, GOLD_G, GOLD_B)
+        head:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
+        local acct = label(content, "Account: " .. self:FormatGold(self:AccountGold()),
+            12, MUTED_R, MUTED_G, MUTED_B)
+        acct:SetJustifyH("RIGHT")
+        acct:SetPoint("TOPRIGHT", content, "TOPRIGHT", -6, y)
+        nextY(28)
+    else
+        local head = label(content, string.format("Safe to spend: %s    Account total: %s",
+            self:FormatGold(self:SafeToSpend()), self:FormatGold(self:AccountGold())), 13)
+        head:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
+    end
 
     local surplus = self:DailySurplus()
     local sl = label(content, string.format("Daily surplus (trailing %dd): %s",
-        self.db.settings.windowDays, self:FormatGold(surplus)), 12)
-    sl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
+        self.db.settings.windowDays, self:FormatGold(surplus)), 12, mr, mg, mb)
+    sl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(22)
 
     local tIn, tOut, tNet = self:TodayTotals()
     -- Full gold/silver/copper here, not the rounded-to-gold short form:
     -- today's amounts are often only a few silver, and "2g" for 1g 50s
     -- would be misleading.
     local tl = label(content, string.format("Today: +%s / -%s  (net %s)",
-        self:FormatGold(tIn), self:FormatGold(tOut), self:FormatGold(tNet)), 12)
+        self:FormatGold(tIn), self:FormatGold(tOut), self:FormatGold(tNet)), 12, mr, mg, mb)
     tl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
 
     local keep = self:DailyKeepAmount()
     if keep > 0 then
-        local kl = label(content, "Keeping for spending: " .. self:DailyKeepLabel(), 12)
+        local kl = label(content, "Keeping for spending: " .. self:DailyKeepLabel(), 12, mr, mg, mb)
         kl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
     end
 
     -- goals
     local goals = self:GetGoals()
+    if #goals > 0 then header("GOALS") end
     if #goals == 0 then
         local e = label(content, "No goals yet — click Add goal to save for your first mount.", 12)
         e:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
@@ -155,18 +207,32 @@ function SG:RefreshUI()
 
         nextY(20)
         local bar = CreateFrame("StatusBar", nil, content)
-        bar:SetSize(W - 12, 16)
+        if modern then
+            bar:SetSize(W - 12, 20)
+        else
+            bar:SetSize(W - 12, 16)
+        end
         bar:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
-        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        -- flat bar in modern: plain white texture, no glossy Blizzard
+        -- status-bar art. Classic keeps the original Blizzard texture.
+        if modern then
+            bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+        else
+            bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        end
         local br, bgc, bb = self:GoalBarColor(g)
         bar:SetStatusBarColor(br, bgc, bb)
         bar:SetMinMaxValues(0, math.max(1, g.target))
         bar:SetValue(math.min(have, g.target))
         local bg = bar:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints(bar)
-        bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
+        if modern then
+            bg:SetColorTexture(0.08, 0.08, 0.08, 0.9)
+        else
+            bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
+        end
         local bl = label(content, string.format("%s / %s (%d%%)  (%s)   [%s]",
-            self:FormatGoldShort(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11)
+            self:FormatGoldShort(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11, mr, mg, mb)
         bl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y - 18)
         nextY(44)
     end
@@ -178,20 +244,18 @@ function SG:RefreshUI()
     end
 
     -- income by source
-    local sh = label(content, "Income by source (account lifetime)", 13)
-    sh:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(22)
+    header("INCOME BY SOURCE", "Income by source (account lifetime)")
     for _, key in ipairs({ "ah", "vendor", "quest", "loot", "other" }) do
         local amt = (self:IncomeBySource())[key] or 0
         if amt > 0 then
-            local l = label(content, string.format("  %s: %s", SOURCE_LABELS[key], self:FormatGold(amt)), 11)
+            local l = label(content, string.format("  %s: %s", SOURCE_LABELS[key], self:FormatGold(amt)), 11, mr, mg, mb)
             l:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(18)
         end
     end
     nextY(8)
 
     -- per character
-    local ch = label(content, "Characters", 13)
-    ch:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(22)
+    header("CHARACTERS", "Characters")
     for key, char in pairs(self.db.chars) do
         local l = label(content, string.format("  %s: %s (safe %s)  (+%s / -%s)",
             key, self:FormatGoldShort(char.lastMoney or 0),

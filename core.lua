@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.5"
+SG.VERSION = "1.0.6"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -107,6 +107,7 @@ function SG:InitDB()
     if s.minimap == nil then s.minimap = true end
     if s.spendBuffer == nil then s.spendBuffer = 0 end -- copper never locked
     if s.dailyKeep == nil then s.dailyKeep = { mode = "pct", value = 0 } end -- held back for spending each day; 0 = off
+    if s.look == nil then s.look = "modern" end -- info-screen look: "modern" or "classic"
     self.db = db
 end
 
