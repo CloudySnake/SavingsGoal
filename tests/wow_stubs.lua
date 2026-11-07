@@ -10,6 +10,7 @@ M.state = {
     inbox = {},                -- { sender=, subject=, money= }
     time = 1000000,            -- GetTime()
     repairCost = 0,            -- GetRepairAllCost()
+    lootSlots = {},            -- { coin=bool, quantity=, name= } per loot-window slot
 }
 
 M.hooks = {}   -- hooksecurefunc registry
@@ -23,6 +24,7 @@ function M.reset()
     M.state.inbox = {}
     M.state.time = 1000000
     M.state.repairCost = 0
+    M.state.lootSlots = {}
     M.hooks = {}
     M.frames = {}
     M.fontstrings = {}
@@ -43,6 +45,18 @@ function GetTime() return M.state.time end
 -- WoW's date() is os.date with the same signature
 function date(fmt, t) return os.date(fmt, t) end
 function time(t) return os.time(t) end
+
+function GetNumLootItems() return #M.state.lootSlots end
+function GetLootSlotInfo(i)
+    local s = M.state.lootSlots[i]
+    if not s then return nil end
+    -- texture, item name, quantity
+    return "Interface\\MoneyFrame\\UI-Coin", s.name, s.quantity
+end
+function LootSlotIsCoin(i)
+    local s = M.state.lootSlots[i]
+    return s and s.coin or false
+end
 
 function GetInboxNumItems() return #M.state.inbox end
 function GetInboxHeaderInfo(i)

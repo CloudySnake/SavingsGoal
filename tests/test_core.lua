@@ -154,6 +154,95 @@ return function(stubs, ADDON)
         assertEq(SG:Char().bySource.other, 0)
     end)
 
+    test("loot: coin slot in the loot window files the money as loot, with no chat", function()
+        -- the money sits in the window as a coin slot before it is
+        -- taken, so this needs no chat text at all (Martin's case:
+        -- the loot message never reached the addon)
+        local SG = fresh(0)
+        stubs.state.lootSlots = {
+            { coin = true, quantity = 4, name = "4 Copper" },
+            { coin = false, quantity = 1, name = "Linen Cloth" },
+        }
+        fire(SG, "LOOT_OPENED")
+        assertEq(SG.pending.loot, 4)
+        setMoney(SG, 4)
+        assertEq(SG:Char().bySource.loot, 4)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("loot: chat arriving after a coin-scanned loot does not double-count it", function()
+        local SG = fresh(0)
+        stubs.state.lootSlots = { { coin = true, quantity = 4, name = "4 Copper" } }
+        fire(SG, "LOOT_OPENED")
+        setMoney(SG, 4) -- filed as loot from the coin scan
+        assertEq(SG:Char().bySource.loot, 4)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 4 Copper") -- arrives late: must not stack pending loot
+        assertEq(SG.pending.loot, 0)
+        stubs.state.time = stubs.state.time + 5 -- past the loot-window grace period
+        setMoney(SG, 8) -- a later, unrelated 4c gain is not loot
+        assertEq(SG:Char().bySource.other, 4)
+        assertEq(SG:Char().bySource.loot, 4)
+    end)
+
+    test("loot: grace period covers a window that closed before the money arrived", function()
+        -- auto-loot closes the window before PLAYER_MONEY fires, so
+        -- "is the window open now" misses it; the timestamp doesn't
+        local SG = fresh(0)
+        fire(SG, "LOOT_OPENED") -- empty window: the coin scan finds nothing
+        stubs.state.time = stubs.state.time + 1
+        setMoney(SG, 5000)
+        assertEq(SG:Char().bySource.loot, 5000)
+        stubs.state.time = stubs.state.time + 10
+        setMoney(SG, 6000) -- 11s after the window: no longer loot
+        assertEq(SG:Char().bySource.other, 1000)
+    end)
+
+    test("loot: money message arriving as system text is loot", function()
+        -- some private servers emit money messages as system text
+        -- instead of CHAT_MSG_MONEY (FonzAppraiser's compatibility note)
+        local SG = fresh(0)
+        fire(SG, "CHAT_MSG_SYSTEM", "You loot 50 Silver.")
+        setMoney(SG, 5000)
+        assertEq(SG:Char().bySource.loot, 5000)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("loot: system text that is not about looting is ignored", function()
+        local SG = fresh(0)
+        fire(SG, "CHAT_MSG_SYSTEM", "You receive 50 Silver.")
+        setMoney(SG, 5000)
+        assertEq(SG:Char().bySource.other, 5000)
+        assertEq(SG:Char().bySource.loot, 0)
+    end)
+
+    test("loot: filter-stashed text is used when the event arg is unreadable", function()
+        -- on Midnight clients the event arg can be a protected secret;
+        -- the chat filter stashes readable text before OnEvent runs
+        local SG = fresh(0)
+        SG.chatText = { CHAT_MSG_MONEY = "You loot 1 Gold." }
+        fire(SG, "CHAT_MSG_MONEY", nil)
+        assertEq(SG.pending.loot, 10000)
+        fire(SG, "CHAT_MSG_MONEY", {}) -- a non-string arg must not error
+        assertEq(SG.pending.loot, 10000)
+    end)
+
+    test("activity log records each change with its context", function()
+        local SG = fresh(0)
+        setMoney(SG, 100)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 50 Silver.")
+        setMoney(SG, 5100)
+        local log = SG:ActivityLog()
+        assertEq(#log, 2)
+        assertEq(log[1].amount, 100)
+        assertEq(log[1].source, "other")
+        assertEq(log[2].amount, 5000)
+        assertEq(log[2].source, "loot")
+        assertEq(log[2].loot, 5000)
+        -- capped at 100 entries
+        for _ = 1, 105 do SG:LogActivity(1, "other") end
+        assertEq(#SG:ActivityLog(), 100)
+    end)
+
     test("mail fee: postage on a mail with no gold attached", function()
         local SG = fresh(100000)
         fire(SG, "MAIL_SHOW")

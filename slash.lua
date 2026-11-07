@@ -13,6 +13,7 @@ local function help()
     print("  /sg move <50s|1g> — reclassify that much 'Other' income as a transfer from your own alt")
     print("  /sg reclassify <50s|1g> <from> <to> — move income between categories, e.g. /sg reclassify 50s other loot")
     print("  /sg last — show what the last gain/spend was filed as")
+    print("  /sg log — show the last 10 activity-log entries (time, amount, source, what the addon saw)")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -119,6 +120,18 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             print("|cff33ff99SavingsGoal:|r totals now — Loot: " .. SG:FormatGold(bySource.loot or 0) .. ", Other: " .. SG:FormatGold(bySource.other or 0))
         else
             print("|cff33ff99SavingsGoal:|r no money change recorded yet this session")
+        end
+    elseif cmd == "log" then
+        local log = SG:ActivityLog()
+        if #log == 0 then
+            print("|cff33ff99SavingsGoal:|r activity log is empty")
+        else
+            for i = math.max(1, #log - 9), #log do
+                local e = log[i]
+                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s)",
+                    e.t, SG:FormatGold(e.amount), e.source, SG:FormatGold(e.loot or 0),
+                    e.win == 1 and "yes" or "no", e.merch == 1 and "yes" or "no", e.quest == 1 and "yes" or "no"))
+            end
         end
     elseif cmd == "minimap" then
         SG:ToggleMinimap()

@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.12). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.13). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -174,6 +174,10 @@ If an amount was already misfiled before this version, fix it on the receiving c
 
 **Fixing a misfiled amount (v1.0.10):** the loot fix only applies to new loot — anything filed as "Other" before the fix stays in "Other" until you move it. On the character that earned it: `/sg reclassify <amount> other loot` (e.g. `/sg reclassify 50s other loot`). Categories are ah, vendor, quest, loot or other; totals don't change, only the bucket. If loot still lands in "Other" after updating, loot something and run `/sg last` straight away — it reports what the gain was filed as and how much pending loot the addon had seen at the time, which shows whether the loot message ever reached it. (v1.0.12: `/sg last` now reports the *final* filing — before that it kept saying 'other' even after the loot message had moved the gain into Loot — and also prints the current Loot and Other totals, so you can see the bucket directly. The late-chat window is 10 seconds.)
 
+**Activity log (v1.0.13):** every money change is recorded — time, amount, source, and what the addon could see at the time (pending loot, whether the loot window had just been open, merchant, quest). `/sg log` prints the last 10 entries. It is the source of truth when a filing looks wrong: instead of guessing from a screenshot, the log shows exactly what the addon observed. The log is kept in SavedVariables (last 100 entries, account-wide).
+
+**How loot is detected (v1.0.13):** chat text turned out to be unreliable on Forever — on the Midnight client the game hands chat text to addons as a protected "secret" that errors when touched (Loot Pro hit the same thing), and some private servers emit money messages as system text instead of `CHAT_MSG_MONEY`. So loot now uses four independent signals, in order: (1) the loot window is scanned for coin slots when it opens — the money is sitting there before it is ever taken, so this needs no chat at all, and it works for corpse loot and pickpocketing alike; (2) a 2-second grace period after the loot window opens, so auto-loot closing the window before the money arrives doesn't lose the signal; (3) the loot chat message, read through a `ChatFrame_AddMessageEventFilter` (which can read the text) and also listened for on `CHAT_MSG_MONEY`, `CHAT_MSG_SYSTEM` and `CHAT_MSG_LOOT`; (4) if the message arrives after its money, the gain is moved from Other into Loot (10-second window). The signals are de-duplicated, so one loot can't be counted twice.
+
 ## What the info screen shows (v1.0.5 polish)
 
 - **Goal bars** show a % complete, e.g. `25g / 100g (25%)`, and change colour as you get closer: green while working, gold at 75%+, bright green when complete.
@@ -196,6 +200,7 @@ Ideas from other gold addons that are *not* in SavingsGoal yet, deliberately: a 
 /sg move <50s|1g>            reclassify that much 'Other' income as a transfer from your own alt
 /sg reclassify <50s|1g> <from> <to>  move income between categories, e.g. /sg reclassify 50s other loot
 /sg last                     show what the last gain/spend was filed as (and pending loot at the time)
+/sg log                      show the last 10 activity-log entries (the source of truth)
 /sg minimap                  toggle the minimap button
 /sg reset                    wipe ALL SavingsGoal data (asks first)
 ```

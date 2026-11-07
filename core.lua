@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.12"
+SG.VERSION = "1.0.13"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -117,6 +117,7 @@ function SG:InitDB()
     if s.dailyKeep == nil then s.dailyKeep = { mode = "pct", value = 0 } end -- held back for spending each day; 0 = off
     if s.look == nil then s.look = "modern" end -- info-screen look: "modern" or "classic"
     db.outgoingMoves = db.outgoingMoves or {} -- sent transfers awaiting receipt: {amount=, day=, from=}
+    db.log = db.log or {} -- activity log: last 100 money changes, the source of truth
     self.db = db
 end
 
@@ -148,7 +149,7 @@ SG.pending = {
     mailSending = false,           -- a mail send is in progress (fee may follow)
     mailOpen = false,              -- mailbox is open
     repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
-    lootWindow = false,            -- loot window is open
+    lootWindowAt = 0,              -- GetTime() of the last LOOT_OPENED (see grace period below)
 }
 SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
 -- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move" }
@@ -173,11 +174,36 @@ function SG:ReclassifyIncomeSource(from, to, amount)
     return n
 end
 
+-- Activity log: every money change, with what the addon could see at
+-- the time — the source of truth when a filing looks wrong, instead of
+-- guessing from a screenshot. Capped at 100 entries, account-wide.
+function SG:LogActivity(amount, source)
+    self.db.log = self.db.log or {}
+    local p = self.pending
+    local entry = {
+        t = date("%H:%M:%S"),
+        amount = amount,
+        source = source,
+        loot = self._lootAtDelta or 0,
+        win = (GetTime() - (p.lootWindowAt or 0) <= 3) and 1 or 0,
+        merch = p.merchant and 1 or 0,
+        quest = p.quest and 1 or 0,
+    }
+    table.insert(self.db.log, entry)
+    while #self.db.log > 100 do table.remove(self.db.log, 1) end
+    return entry
+end
+
+function SG:ActivityLog()
+    return self.db.log or {}
+end
+
 function SG:RecordDelta(char, delta, source)
     local today = self:TodayKey()
     char.daily[today] = char.daily[today] or { income = 0, outgoing = 0 }
     -- last gain, for /sg last diagnostics ("what did that loot just file as?")
-    self.lastGain = { amount = delta, source = source, pendingLoot = self._lootAtDelta or 0 }
+    self.lastGain = { amount = delta, source = source, pendingLoot = self._lootAtDelta or 0, at = GetTime() }
+    self:LogActivity(delta, source)
     if delta > 0 then
         char.income = char.income + delta
         char.daily[today].income = char.daily[today].income + delta
@@ -197,6 +223,7 @@ end
 
 function SG:RecordMoneyMove(char, amount) -- amount signed; never touches income/outgoing
     char.moneyMoves = char.moneyMoves + math.abs(amount)
+    self:LogActivity(amount, "move")
 end
 
 -- Outgoing transfer: record the move on the sender and leave a note in
@@ -319,10 +346,12 @@ function SG:OnMoney()
         self:RecordDelta(char, lootPart, "loot")
         if remaining == 0 then return end
     end
-    -- GoldLedger's other loot signal: if the loot window is open when
-    -- the money arrives, it's loot even if no loot chat message ever
-    -- reached us (the case behind "loot still shows as Other").
-    if p.lootWindow then
+    -- Loot-window grace period: with auto-loot the window can already
+    -- be closed by the time the money arrives, so a boolean "is it
+    -- open now" misses it. Money arriving within a few seconds of the
+    -- window opening is loot even if no loot chat message ever reached
+    -- us (the case behind "loot still shows as Other").
+    if GetTime() - (p.lootWindowAt or 0) <= 2 then
         self:RecordDelta(char, remaining, "loot")
         return
     end
@@ -400,21 +429,89 @@ SG:Register("PLAYER_MONEY", function(self) self:OnMoney() end)
 SG:Register("MERCHANT_SHOW", function(self) self.pending.merchant = true end)
 SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0 end)
 
-SG:Register("LOOT_OPENED", function(self) self.pending.lootWindow = true end)
-SG:Register("LOOT_CLOSED", function(self) self.pending.lootWindow = false end)
+-- Scan the loot window for coin slots (FonzAppraiser's approach):
+-- the money is sitting in the window as a coin slot before it is ever
+-- taken, so this does not depend on chat text at all. Works for corpse
+-- loot and pickpocketing alike — both open a loot window.
+function SG:ScanLootWindow()
+    if not GetNumLootItems or not LootSlotIsCoin or not GetLootSlotInfo then return end
+    local total = 0
+    for i = 1, (GetNumLootItems() or 0) do
+        if LootSlotIsCoin(i) then
+            local _, name, quantity = GetLootSlotInfo(i)
+            local amount = quantity or 0
+            if amount == 0 and name then amount = self:ParseLootMoney(name) end
+            if amount > 0 then total = total + amount end
+        end
+    end
+    if total > 0 then
+        self.pending.loot = self.pending.loot + total
+        self.lastCoinScan = { amount = total, at = GetTime() }
+    end
+end
+
+SG:Register("LOOT_OPENED", function(self)
+    self.pending.lootWindowAt = GetTime()
+    self:ScanLootWindow()
+end)
+SG:Register("LOOT_CLOSED", function(self) end) -- the timestamp is what matters, not the close
 
 SG:Register("QUEST_TURN_IN_COMPLETE", function(self) self.pending.quest = true end)
 
-SG:Register("CHAT_MSG_MONEY", function(self, msg)
-    -- "You loot 12 Gold, 34 Silver, 56 Copper."
-    local g = tonumber(msg:match("(%d+) [Gg]old")) or 0
-    local s = tonumber(msg:match("(%d+) [Ss]ilver")) or 0
-    local c = tonumber(msg:match("(%d+) [Cc]opper")) or 0
-    local amount = g * 10000 + s * 100 + c
+-- Parse "You loot 12 Gold, 34 Silver, 56 Copper." (or just the
+-- "12 Gold, 34 Silver, 56 Copper" part) into copper; 0 if no money.
+function SG:ParseLootMoney(text)
+    if type(text) ~= "string" then return 0 end
+    local g = tonumber(text:match("(%d+) [Gg]old")) or 0
+    local s = tonumber(text:match("(%d+) [Ss]ilver")) or 0
+    local c = tonumber(text:match("(%d+) [Cc]opper")) or 0
+    return g * 10000 + s * 100 + c
+end
+
+-- One handler for every chat event that can carry a loot-money message.
+-- Why three events, and why the filter below: on the Midnight client
+-- (which Forever runs on) chat text is handed to event handlers as a
+-- protected "secret" that errors when touched — Loot Pro hit exactly
+-- this and switched to ChatFrame_AddMessageEventFilter, whose callback
+-- runs in an untainted frame and can read the text. And some private
+-- servers emit money messages as system text instead of CHAT_MSG_MONEY
+-- (FonzAppraiser's compatibility note), so CHAT_MSG_SYSTEM is covered
+-- too; CHAT_MSG_LOOT covers the same text arriving as a loot message.
+function SG:OnLootMoneyMessage(event, msg)
+    -- Prefer text stashed by the chat filter; never touch the event
+    -- arg if the stash has it (the arg may be a secret that errors).
+    local text = SG.chatText and SG.chatText[event]
+    if SG.chatText then SG.chatText[event] = nil end
+    local amount = 0
+    if text then
+        amount = self:ParseLootMoney(text)
+    else
+        local ok, parsed = pcall(function() return self:ParseLootMoney(msg) end)
+        if ok then amount = parsed end
+    end
     if amount <= 0 then return end
+    -- System and loot messages must actually be about looting ("You
+    -- receive 5 Gold" from a quest is not loot); CHAT_MSG_MONEY is
+    -- money-specific, so it needs no such check. The event arg is
+    -- only read inside pcall — on Midnight clients it may be a
+    -- protected secret that errors when touched.
+    if event ~= "CHAT_MSG_MONEY" then
+        local hay = text
+        if not hay then
+            local ok, lowered = pcall(function() return msg:lower() end)
+            if ok then hay = lowered end
+        end
+        if not hay or not hay:find("loot", 1, true) then return end
+    end
+    -- Already filed as loot (chat arrived after the money): don't
+    -- stack a pending amount a later gain would then claim.
+    local lg = self.lastGain
+    if lg and lg.source == "loot" and lg.amount == amount and GetTime() - (lg.at or 0) <= 10 then return end
+    -- Already counted by the loot-window coin scan for the same loot.
+    local cs = self.lastCoinScan
+    if cs and cs.amount == amount and GetTime() - cs.at <= 3 then return end
     -- If the money already arrived and was filed as "other" (chat
-    -- after money), move that gain into loot instead of stacking a
-    -- pending amount a later, unrelated gain would then claim.
+    -- after money), move that gain into loot.
     local last = self.lastOtherGain
     if last and last.amount == amount and GetTime() - last.at <= 10 then
         self.lastOtherGain = nil
@@ -422,7 +519,24 @@ SG:Register("CHAT_MSG_MONEY", function(self, msg)
         return
     end
     self.pending.loot = self.pending.loot + amount -- accumulate, don't overwrite
-end)
+end
+
+SG:Register("CHAT_MSG_MONEY", function(self, msg) self:OnLootMoneyMessage("CHAT_MSG_MONEY", msg) end)
+SG:Register("CHAT_MSG_SYSTEM", function(self, msg) self:OnLootMoneyMessage("CHAT_MSG_SYSTEM", msg) end)
+SG:Register("CHAT_MSG_LOOT", function(self, msg) self:OnLootMoneyMessage("CHAT_MSG_LOOT", msg) end)
+
+-- Stash chat text in the filter, before OnEvent runs: the filter runs
+-- in an untainted Blizzard frame and can read the text, while the
+-- event handler's arg may be a protected secret on Midnight clients.
+if ChatFrame_AddMessageEventFilter then
+    for _, ev in ipairs({ "CHAT_MSG_MONEY", "CHAT_MSG_SYSTEM", "CHAT_MSG_LOOT" }) do
+        ChatFrame_AddMessageEventFilter(ev, function(_, _, msg)
+            SG.chatText = SG.chatText or {}
+            SG.chatText[ev] = msg
+            return false
+        end)
+    end
+end
 
 SG:Register("MAIL_INBOX_UPDATE", function(self) self:ScanInbox() end)
 
