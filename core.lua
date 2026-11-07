@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.11"
+SG.VERSION = "1.0.12"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -165,6 +165,11 @@ function SG:ReclassifyIncomeSource(from, to, amount)
     if n <= 0 then return 0 end
     char.bySource[from] = char.bySource[from] - n
     char.bySource[to] = (char.bySource[to] or 0) + n
+    -- keep /sg last truthful: if this was the last recorded gain, its
+    -- filing is now the new bucket, not the original one
+    if self.lastGain and self.lastGain.source == from and self.lastGain.amount == n then
+        self.lastGain.source = to
+    end
     return n
 end
 
@@ -411,7 +416,7 @@ SG:Register("CHAT_MSG_MONEY", function(self, msg)
     -- after money), move that gain into loot instead of stacking a
     -- pending amount a later, unrelated gain would then claim.
     local last = self.lastOtherGain
-    if last and last.amount == amount and GetTime() - last.at <= 3 then
+    if last and last.amount == amount and GetTime() - last.at <= 10 then
         self.lastOtherGain = nil
         self:ReclassifyIncomeSource("other", "loot", amount)
         return

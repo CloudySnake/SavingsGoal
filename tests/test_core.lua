@@ -97,6 +97,9 @@ return function(stubs, ADDON)
         assertEq(SG:Char().bySource.loot, 5000)
         assertEq(SG:Char().bySource.other, 0)
         assertEq(SG:Char().income, 5000) -- total unchanged, only the bucket moved
+        -- /sg last must report the final filing, not the original one:
+        -- before this fix it still said 'other' after a reclassify
+        assertEq(SG.lastGain.source, "loot")
     end)
 
     test("mail fee: sent gold plus postage splits into move and mail", function()

@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.11). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.12). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -172,7 +172,7 @@ If an amount was already misfiled before this version, fix it on the receiving c
 
 **How other addons do it:** SavingsGoal's detection now matches GoldLedger's published table — Vendor = merchant window open, Repair = `RepairAllItems()` hook, Auction House = AH window + AH mail sender, Mail = mailbox open, Quest = quest turn-in, Loot = loot window (plus the "You loot …" chat message), Trade = trade window (not tracked here). Accountant, the long-running original, uses the same event/context approach with categories for training, taxi fares, trading, mail, looting, quests, repairs, merchant and auction house.
 
-**Fixing a misfiled amount (v1.0.10):** the loot fix only applies to new loot — anything filed as "Other" before the fix stays in "Other" until you move it. On the character that earned it: `/sg reclassify <amount> other loot` (e.g. `/sg reclassify 50s other loot`). Categories are ah, vendor, quest, loot or other; totals don't change, only the bucket. If loot still lands in "Other" after updating, loot something and run `/sg last` straight away — it reports what the gain was filed as and how much pending loot the addon had seen at the time, which shows whether the loot message ever reached it.
+**Fixing a misfiled amount (v1.0.10):** the loot fix only applies to new loot — anything filed as "Other" before the fix stays in "Other" until you move it. On the character that earned it: `/sg reclassify <amount> other loot` (e.g. `/sg reclassify 50s other loot`). Categories are ah, vendor, quest, loot or other; totals don't change, only the bucket. If loot still lands in "Other" after updating, loot something and run `/sg last` straight away — it reports what the gain was filed as and how much pending loot the addon had seen at the time, which shows whether the loot message ever reached it. (v1.0.12: `/sg last` now reports the *final* filing — before that it kept saying 'other' even after the loot message had moved the gain into Loot — and also prints the current Loot and Other totals, so you can see the bucket directly. The late-chat window is 10 seconds.)
 
 ## What the info screen shows (v1.0.5 polish)
 

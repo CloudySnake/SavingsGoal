@@ -114,7 +114,9 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
     elseif cmd == "last" then
         local g = SG.lastGain
         if g then
+            local bySource = SG:IncomeBySource()
             print("|cff33ff99SavingsGoal:|r last change: " .. SG:FormatGold(g.amount) .. " filed as '" .. g.source .. "' (pending loot at the time: " .. SG:FormatGold(g.pendingLoot or 0) .. ")")
+            print("|cff33ff99SavingsGoal:|r totals now — Loot: " .. SG:FormatGold(bySource.loot or 0) .. ", Other: " .. SG:FormatGold(bySource.other or 0))
         else
             print("|cff33ff99SavingsGoal:|r no money change recorded yet this session")
         end
