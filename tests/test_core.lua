@@ -69,6 +69,55 @@ return function(stubs, ADDON)
         assertEq(SG:Char().bySource.loot, 10203)
     end)
 
+    test("loot: several loots batched into one delta stay loot", function()
+        -- Regression 7 Nov 2026: loot showed as "Other" when loots
+        -- were batched, because pending loot held only one amount
+        -- and needed an exact match.
+        local SG = fresh(0)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 1 Gold.")
+        fire(SG, "CHAT_MSG_MONEY", "You loot 50 Silver.")
+        setMoney(SG, 15000)
+        assertEq(SG:Char().bySource.loot, 15000)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("loot: a delta split between loot and the rest", function()
+        local SG = fresh(0)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 1 Gold.")
+        setMoney(SG, 15000) -- 1g loot + 50s from elsewhere in one tick
+        assertEq(SG:Char().bySource.loot, 10000)
+        assertEq(SG:Char().bySource.other, 5000)
+    end)
+
+    test("loot: chat arriving after the money reclassifies it", function()
+        local SG = fresh(0)
+        setMoney(SG, 5000) -- money first: filed as other
+        assertEq(SG:Char().bySource.other, 5000)
+        fire(SG, "CHAT_MSG_MONEY", "You loot 50 Silver.")
+        assertEq(SG:Char().bySource.loot, 5000)
+        assertEq(SG:Char().bySource.other, 0)
+        assertEq(SG:Char().income, 5000) -- total unchanged, only the bucket moved
+    end)
+
+    test("mail fee: sent gold plus postage splits into move and mail", function()
+        local SG = fresh(100000)
+        stubs.callHook("SetSendMailMoney", 50000)
+        setMoney(SG, 49970) -- 50000 gold sent + 30c postage in one delta
+        local char = SG:Char()
+        assertEq(char.moneyMoves, 50000)
+        assertEq(char.spentBySource.mail, 30)
+        assertEq(char.outgoing, 30)
+        assertEq(SG:SpendingBySource().mail, 30)
+    end)
+
+    test("mail fee: postage on a mail with no gold attached", function()
+        local SG = fresh(100000)
+        fire(SG, "MAIL_SHOW")
+        setMoney(SG, 99970)
+        assertEq(SG:Char().spentBySource.mail, 30)
+        assertEq(SG:Char().outgoing, 30)
+    end)
+
     test("outgoing mail is a money move, not spending", function()
         local SG = fresh(100000)
         stubs.callHook("SetSendMailMoney", 50000)

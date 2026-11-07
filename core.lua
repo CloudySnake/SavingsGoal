@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.8"
+SG.VERSION = "1.0.9"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -97,7 +97,7 @@ local function newCharRecord()
     return {
         income = 0, outgoing = 0,
         bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 },
-        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 },
+        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, other = 0 },
         moneyMoves = 0, -- gold moved between own chars (tracked, excluded from surplus)
         daily = {},    -- ["YYYY-MM-DD"] = { income = n, outgoing = n }
         lastMoney = 0,
@@ -143,13 +143,28 @@ end
 SG.pending = {
     merchant = false,
     quest = false,
-    loot = 0,
+    loot = 0,                      -- accumulated: looted gold awaiting its PLAYER_MONEY delta
     sendMoney = 0,                 -- gold attached to outgoing mail
+    mailSending = false,           -- a mail send is in progress (fee may follow)
+    mailOpen = false,              -- mailbox is open
 }
+SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
 -- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move" }
 SG.pendingMail = {}
 SG.claimedMail = {} -- keys already consumed, so identical re-sent mails can count again once gone
 SG.ready = false  -- set on PLAYER_LOGIN; ignore money noise before that
+
+-- Move `amount` copper of income between source buckets (totals and
+-- daily income are unchanged — only the category changes). Used when a
+-- loot chat message arrives after its money was already filed as "other".
+function SG:ReclassifyIncomeSource(from, to, amount)
+    local char = self:Char()
+    local n = math.min(amount or 0, (char.bySource and char.bySource[from]) or 0)
+    if n <= 0 then return 0 end
+    char.bySource[from] = char.bySource[from] - n
+    char.bySource[to] = (char.bySource[to] or 0) + n
+    return n
+end
 
 function SG:RecordDelta(char, delta, source)
     local today = self:TodayKey()
@@ -158,6 +173,11 @@ function SG:RecordDelta(char, delta, source)
         char.income = char.income + delta
         char.daily[today].income = char.daily[today].income + delta
         char.bySource[source] = (char.bySource[source] or 0) + delta
+        -- remember the latest gain filed as "other", so a loot chat
+        -- message that arrives after its money can still reclassify it
+        if source == "other" then
+            self.lastOtherGain = { amount = delta, at = GetTime() }
+        end
     else
         local d = -delta
         char.outgoing = char.outgoing + d
@@ -221,6 +241,23 @@ function SG:OnMoney()
             p.sendMoney = 0
             return
         end
+        if p.sendMoney > 0 and (-delta) > p.sendMoney then
+            -- sent gold plus postage in one delta: the gold is a move,
+            -- the excess is the mail fee
+            local fee = (-delta) - p.sendMoney
+            self:RecordOutgoingMove(char, p.sendMoney)
+            p.sendMoney = 0
+            self:RecordDelta(char, -fee, "mail")
+            self:CheckLockedDip()
+            return
+        end
+        if (-delta) == self.MAIL_FEE and (p.mailSending or p.mailOpen) then
+            -- postage on a mail with no gold attached (or the fee
+            -- arriving as its own delta)
+            self:RecordDelta(char, delta, "mail")
+            self:CheckLockedDip()
+            return
+        end
         self:RecordDelta(char, delta, p.merchant and "vendor" or "other")
         self:CheckLockedDip()
         return
@@ -245,21 +282,29 @@ function SG:OnMoney()
         self:RecordMoneyMove(char, delta)
         return
     end
-    if p.loot > 0 and delta == p.loot then
-        p.loot = 0
-        self:RecordDelta(char, delta, "loot")
-        return
+    -- Loot used to need an exact match against one loot message, so it
+    -- leaked into "other" whenever several loots were batched into one
+    -- money delta, or a second loot overwrote the first before the
+    -- money arrived. Now the pending loot accumulates, and a delta is
+    -- split: the looted part is loot, the rest is judged on its own.
+    local remaining = delta
+    if p.loot > 0 then
+        local lootPart = math.min(remaining, p.loot)
+        p.loot = p.loot - lootPart
+        remaining = remaining - lootPart
+        self:RecordDelta(char, lootPart, "loot")
+        if remaining == 0 then return end
     end
     if p.quest then
         p.quest = false
-        self:RecordDelta(char, delta, "quest")
+        self:RecordDelta(char, remaining, "quest")
         return
     end
     if p.merchant then
-        self:RecordDelta(char, delta, "vendor")
+        self:RecordDelta(char, remaining, "vendor")
         return
     end
-    self:RecordDelta(char, delta, "other")
+    self:RecordDelta(char, remaining, "other")
 end
 
 -- --------------------------------------------------------------- mail scan --
@@ -332,19 +377,34 @@ SG:Register("CHAT_MSG_MONEY", function(self, msg)
     local s = tonumber(msg:match("(%d+) [Ss]ilver")) or 0
     local c = tonumber(msg:match("(%d+) [Cc]opper")) or 0
     local amount = g * 10000 + s * 100 + c
-    if amount > 0 then self.pending.loot = amount end
+    if amount <= 0 then return end
+    -- If the money already arrived and was filed as "other" (chat
+    -- after money), move that gain into loot instead of stacking a
+    -- pending amount a later, unrelated gain would then claim.
+    local last = self.lastOtherGain
+    if last and last.amount == amount and GetTime() - last.at <= 3 then
+        self.lastOtherGain = nil
+        self:ReclassifyIncomeSource("other", "loot", amount)
+        return
+    end
+    self.pending.loot = self.pending.loot + amount -- accumulate, don't overwrite
 end)
 
 SG:Register("MAIL_INBOX_UPDATE", function(self) self:ScanInbox() end)
 
+SG:Register("MAIL_SHOW", function(self) self.pending.mailOpen = true end)
+SG:Register("MAIL_CLOSED", function(self) self.pending.mailOpen = false; self.pending.mailSending = false end)
+
 -- outgoing mail: hook the money setter; MAIL_SEND_SUCCESS confirms it sent
 hooksecurefunc("SetSendMailMoney", function(copper)
     SG.pending.sendMoney = copper or 0
+    SG.pending.mailSending = true
 end)
 
 SG:Register("MAIL_SEND_SUCCESS", function(self)
     local amt = self.pending.sendMoney
     self.pending.sendMoney = 0
+    self.pending.mailSending = false
     if amt and amt > 0 then
         -- assumption (documented in SPEC): gold mailed goes to your own bank alt.
         -- If PLAYER_MONEY hasn't fired yet, its delta arrives next: swallow it.

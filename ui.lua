@@ -6,6 +6,7 @@ local content = nil
 local lookBtn = nil -- Look toggle button; its text follows the current look
 
 local SOURCE_LABELS = { ah = "Auction House", vendor = "Vendoring", quest = "Quests", loot = "Loot", other = "Other" }
+local SPENDING_LABELS = { ah = "Auction House", vendor = "Vendoring / repairs", mail = "Mail fees", other = "Other" }
 
 local function smallButton(parent, text, width, onClick)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -261,6 +262,22 @@ function SG:RefreshUI()
         end
     end
     nextY(8)
+
+    -- spending by source (mail fees live here, not in "Other")
+    local spent = self:SpendingBySource()
+    local anySpent = false
+    for _, v in pairs(spent) do if v > 0 then anySpent = true end end
+    if anySpent then
+        header("SPENDING BY SOURCE", "Spending by source (account lifetime)")
+        for _, key in ipairs({ "vendor", "mail", "ah", "other" }) do
+            local amt = spent[key] or 0
+            if amt > 0 then
+                local l = label(content, string.format("  %s: %s", SPENDING_LABELS[key], self:FormatGold(amt)), 11, mr, mg, mb)
+                l:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(18)
+            end
+        end
+        nextY(8)
+    end
 
     -- transfers between your own characters: excluded from income
     -- and surplus, shown here so a transfer is visibly recognised

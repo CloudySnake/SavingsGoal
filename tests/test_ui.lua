@@ -395,6 +395,15 @@ return function(stubs, ADDON)
         assertEq(charColor and charColor[1], 0.78)
     end)
 
+    test("Spending section shows mail fees", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.spentBySource.mail = 30
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("^SPENDING BY SOURCE$"), true)
+        assertEq(anyVisibleMatching("Mail fees: 0g 0s 30c"), true)
+    end)
+
     test("BrokerText shows years for huge ETAs", function()
         local SG = fresh()
         dofile(ADDON .. "broker.lua")

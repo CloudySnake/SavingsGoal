@@ -279,6 +279,16 @@ function SG:IncomeBySource()
     return t
 end
 
+function SG:SpendingBySource()
+    local t = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, other = 0 }
+    for _, char in pairs(self.db.chars) do
+        for k, v in pairs(char.spentBySource or {}) do
+            t[k] = (t[k] or 0) + v
+        end
+    end
+    return t
+end
+
 -- --------------------------------------------------------------- forecasts --
 function SG:GoalNeed(goal)
     return math.max(0, goal.target - (goal.seed or 0) - (goal.saved or 0))

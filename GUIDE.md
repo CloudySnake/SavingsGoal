@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.8). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.9). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -159,6 +159,14 @@ Gold mailed to your bank alt is a **money move**, not income: it never touches s
 Two things that used to misfile it as "Other" income are fixed: the inbox sender can arrive as the full "Nox-CAMWOW EU4 Realm 1 PvE" (not just "Nox"), which the old check failed on, and if the inbox scan misses a mail for any reason, the sending character now leaves a note in a shared ledger, so the receiving alt recognises the same amount as a transfer when it arrives.
 
 If an amount was already misfiled before this version, fix it on the receiving character with `/sg move <amount>` — e.g. `/sg move 50s` moves 50 silver out of "Other" income into transfers, including today's daily income so the surplus is corrected too.
+
+## How income and spending are categorised (v1.0.9)
+
+**Loot:** when you loot gold, the game prints "You loot …" and the addon marks that amount as loot. It used to need one loot message to match one money change exactly, so loot leaked into "Other" whenever several loots were batched into a single money change, or a second loot overwrote the first before the money arrived. Now looted amounts accumulate, a money change is split (the looted part is loot, the rest is judged on its own), and if the loot message arrives *after* the money was already filed as "Other", it is moved into Loot.
+
+**Mail fees:** postage (30c per mail) is now its own spending category, "Mail fees". If you mail gold, the sent gold is still a money move and the 30c postage is split off as a mail fee; a mail with no gold attached is charged the same way while the mailbox is open. Spending is shown in its own "Spending by source" section on the info screen (Vendoring / repairs, Mail fees, Auction House, Other) — previously spending was tracked but never displayed, so mail fees were invisible as well as miscategorised.
+
+**The rest:** Auction House mail is Auction House, vendoring while a merchant window is open is Vendoring, a quest turn-in is Quests, and anything with no other explanation is Other. Gold mailed between your own characters is a money move, never income or spending (see above).
 
 ## What the info screen shows (v1.0.5 polish)
 
