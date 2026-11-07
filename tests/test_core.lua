@@ -145,6 +145,68 @@ return function(stubs, ADDON)
         assertEq(SG:Char().spentBySource.vendor, 4000)
     end)
 
+    test("repair: a single-item cursor repair is filed as Repairs (durability baseline)", function()
+        -- Accountant's method: the repair cost drops when one item is
+        -- repaired, and the money drop is filed as a repair. The
+        -- PLAYER_MONEY event arriving after the durability event must
+        -- not file the same drop again as a vendor purchase.
+        local SG = fresh(100000)
+        stubs.state.repairCost = 2500
+        fire(SG, "MERCHANT_SHOW") -- baselines the cost at 2500
+        -- now one item is repaired: money drops 800 before
+        -- PLAYER_MONEY fires, cost drops to 1700
+        stubs.state.money = 99200
+        stubs.state.repairCost = 1700
+        fire(SG, "UPDATE_INVENTORY_DURABILITY")
+        assertEq(SG:Char().spentBySource.repair, 800)
+        assertEq(SG:Char().spentBySource.vendor, 0)
+        setMoney(SG, 99200) -- PLAYER_MONEY arrives late: delta 0, no double count
+        assertEq(SG:Char().spentBySource.repair, 800)
+        assertEq(SG:Char().outgoing, 800)
+    end)
+
+    test("repair: a cursor repair whose money hasn't dropped yet leaves a flag for OnMoney", function()
+        local SG = fresh(100000)
+        stubs.state.repairCost = 2500
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.repairCost = 1700 -- one item repaired, money still to come
+        fire(SG, "UPDATE_INVENTORY_DURABILITY")
+        assertEq(SG:Char().spentBySource.repair, 0)
+        setMoney(SG, 99200)
+        assertEq(SG:Char().spentBySource.repair, 800)
+        assertEq(SG:Char().spentBySource.vendor, 0)
+    end)
+
+    test("repair: sequential single-item repairs are each measured", function()
+        local SG = fresh(100000)
+        stubs.state.repairCost = 2500
+        fire(SG, "MERCHANT_SHOW")
+        stubs.state.money = 99200
+        stubs.state.repairCost = 1700
+        fire(SG, "UPDATE_INVENTORY_DURABILITY")
+        stubs.state.money = 98700
+        stubs.state.repairCost = 1200
+        fire(SG, "UPDATE_INVENTORY_DURABILITY")
+        assertEq(SG:Char().spentBySource.repair, 1300)
+        assertEq(SG:Char().spentBySource.vendor, 0)
+    end)
+
+    test("repair: a Repair All click still goes through the hook, not the durability event", function()
+        -- the hook sets the flag; the durability event must not file
+        -- the same repair a second time
+        local SG = fresh(100000)
+        stubs.state.repairCost = 2500
+        fire(SG, "MERCHANT_SHOW")
+        stubs.callHook("RepairAllItems")
+        stubs.state.money = 97500
+        stubs.state.repairCost = 0
+        fire(SG, "UPDATE_INVENTORY_DURABILITY")
+        assertEq(SG:Char().spentBySource.repair, 0)
+        setMoney(SG, 97500)
+        assertEq(SG:Char().spentBySource.repair, 2500)
+        assertEq(SG:Char().spentBySource.vendor, 0)
+    end)
+
     test("repair: a stale flag from a guild-paid repair does not claim a later purchase", function()
         -- the guild paid the whole bill, so no delta arrived and the
         -- flag survived; a purchase minutes later, smaller than the
@@ -293,15 +355,39 @@ return function(stubs, ADDON)
 
     test("taxi: a fare paid as the taxi map closes is travel spending", function()
         -- the map closes as the flight starts, so the money can arrive
-        -- after TAXIMAP_CLOSED; the grace period covers it
+        -- after TAXIMAP_CLOSED; the hook's exact fare covers it
         local SG = fresh(100000)
         fire(SG, "TAXIMAP_OPENED")
+        stubs.state.taxiCost = 100
+        stubs.callHook("TakeTaxiNode", 1)
         fire(SG, "TAXIMAP_CLOSED")
         setMoney(SG, 99900)
         assertEq(SG:Char().spentBySource.taxi, 100)
         stubs.state.time = stubs.state.time + 10
         setMoney(SG, 99800)
         assertEq(SG:Char().spentBySource.other, 100)
+    end)
+
+    test("taxi: closing the map without flying leaves no grace", function()
+        -- no TakeTaxiNode fired, so a purchase just after closing the
+        -- map is not filed as a fare
+        local SG = fresh(100000)
+        fire(SG, "TAXIMAP_OPENED")
+        fire(SG, "TAXIMAP_CLOSED")
+        setMoney(SG, 99000)
+        assertEq(SG:Char().spentBySource.taxi, 0)
+        assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("taxi: a zero TaxiNodeCost falls back to the window", function()
+        -- the hook fired but the API had no fare: the money change
+        -- while the map is open is still the fare
+        local SG = fresh(100000)
+        fire(SG, "TAXIMAP_OPENED")
+        stubs.state.taxiCost = 0
+        stubs.callHook("TakeTaxiNode", 1)
+        setMoney(SG, 98500)
+        assertEq(SG:Char().spentBySource.taxi, 1500)
     end)
 
     test("trade: gold given and received in the trade window is trading", function()
@@ -316,6 +402,64 @@ return function(stubs, ADDON)
         stubs.state.time = stubs.state.time + 10
         setMoney(SG, 94000)
         assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("barber: a haircut files as Barber, and closing the shop clears it", function()
+        local SG = fresh(100000)
+        fire(SG, "BARBER_SHOP_OPEN")
+        setMoney(SG, 95000)
+        assertEq(SG:Char().spentBySource.barber, 5000)
+        fire(SG, "BARBER_SHOP_CLOSE")
+        setMoney(SG, 94000)
+        assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("transmog: applying a transmog files as Transmogrify", function()
+        local SG = fresh(100000)
+        fire(SG, "TRANSMOGRIFY_OPEN")
+        setMoney(SG, 98000)
+        assertEq(SG:Char().spentBySource.transmog, 2000)
+        fire(SG, "TRANSMOGRIFY_CLOSE")
+        setMoney(SG, 97000)
+        assertEq(SG:Char().spentBySource.other, 1000)
+    end)
+
+    test("talent: a respec beats the trainer window, and a stale flag does not", function()
+        local SG = fresh(100000)
+        fire(SG, "TRAINER_SHOW")
+        fire(SG, "CONFIRM_TALENT_WIPE")
+        setMoney(SG, 90000)
+        assertEq(SG:Char().spentBySource.talent, 10000)
+        assertEq(SG:Char().spentBySource.trainer, 0)
+        fire(SG, "CONFIRM_TALENT_WIPE")
+        stubs.state.time = stubs.state.time + 10 -- past the 5s grace
+        setMoney(SG, 89000)
+        assertEq(SG:Char().spentBySource.trainer, 1000)
+        assertEq(SG:Char().spentBySource.talent, 10000)
+    end)
+
+    test("lfg: a dungeon-finder reward files as Dungeon Finder, split from loot", function()
+        local SG = fresh(0)
+        fire(SG, "LFG_COMPLETION_REWARD")
+        fire(SG, "CHAT_MSG_MONEY", "You loot 10 Silver.")
+        setMoney(SG, 6000) -- 10s loot + 50s dungeon reward, one delta
+        assertEq(SG:Char().bySource.loot, 1000)
+        assertEq(SG:Char().bySource.lfg, 5000)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("cod: taking a COD mail files the price as Cash on Delivery", function()
+        local SG = fresh(100000)
+        stubs.state.inbox = { { sender = "Someone", subject = "Swift Boots", money = 0, cod = 5000 } }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        local entry = nil
+        for _, c in pairs(SG.pendingCOD) do entry = c end
+        assertEq(entry.amount, 5000)
+        assertEq(entry.sender, "Someone")
+        setMoney(SG, 95000) -- paid the 50s COD price
+        assertEq(SG:Char().spentBySource.cod, 5000)
+        assertEq(SG:Char().spentBySource.other, 0)
+        assertEq(SG:Char().outgoing, 5000)
     end)
 
     test("bank: deposits and withdrawals are money moves, not spending/income", function()

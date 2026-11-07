@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.17"
+SG.VERSION = "1.0.18"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -96,8 +96,8 @@ end
 local function newCharRecord()
     return {
         income = 0, outgoing = 0,
-        bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, trade = 0, other = 0 },
-        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, trade = 0, trainer = 0, taxi = 0, other = 0 },
+        bySource = { ah = 0, vendor = 0, quest = 0, loot = 0, trade = 0, lfg = 0, other = 0 },
+        spentBySource = { ah = 0, vendor = 0, quest = 0, loot = 0, mail = 0, repair = 0, trade = 0, trainer = 0, taxi = 0, barber = 0, transmog = 0, talent = 0, cod = 0, other = 0 },
         moneyMoves = 0, -- gold moved between own chars (tracked, excluded from surplus)
         daily = {},    -- ["YYYY-MM-DD"] = { income = n, outgoing = n }
         lastMoney = 0,
@@ -153,6 +153,7 @@ SG.pending = {
     mailOpen = false,              -- mailbox is open
     repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
     repairAt = 0,                  -- GetTime() the Repair All click was captured
+    repairCostBase = 0,            -- GetRepairAllCost() at MERCHANT_SHOW (durability baseline)
     lootWindowAt = 0,              -- GetTime() of the last LOOT_OPENED (see grace period below)
     lootAt = 0,                    -- GetTime() pending loot was last added (see stale-loot expiry)
     ah = false,                    -- auction house window is open
@@ -160,10 +161,19 @@ SG.pending = {
     trainerClosedAt = 0,
     taxi = false,                  -- taxi map is open
     taxiClosedAt = 0,
+    taxiCost = 0,                  -- exact fare from the TakeTaxiNode hook (pH)
+    taxiAt = 0,                    -- GetTime() the hook fired
+    taxiTaken = false,             -- TakeTaxiNode fired since the taxi map opened
     trade = false,                 -- trade window is open
     tradeClosedAt = 0,
     bank = false,                  -- a bank frame is open (personal, guild or warband)
     bankClosedAt = 0,
+    barber = false,                -- barber shop window is open
+    transmog = false,              -- transmogrify window is open
+    talent = false,                -- a talent respec was just confirmed
+    talentAt = 0,                  -- GetTime() CONFIRM_TALENT_WIPE fired
+    lfg = false,                   -- a dungeon-finder reward was just granted
+    lfgAt = 0,                     -- GetTime() LFG_COMPLETION_REWARD fired
 }
 
 -- A context window counts as active while open, and for a few seconds
@@ -174,10 +184,24 @@ function SG:ContextActive(name)
     if p[name] then return true end
     return GetTime() - (p[name .. "ClosedAt"] or 0) <= 5
 end
+
+-- A short-lived flag (talent respec, LFG reward): true only within
+-- a few seconds of the event that set it; a stale flag is cleared
+-- so it can't claim a later unrelated change.
+function SG:FlagFresh(name)
+    local p = self.pending
+    if not p[name] then return false end
+    if GetTime() - (p[name .. "At"] or 0) > 5 then
+        p[name] = false
+        return false
+    end
+    return true
+end
 SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
 -- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move"|"refund" }
 SG.pendingMail = {}
 SG.claimedMail = {} -- keys already consumed, so identical re-sent mails can count again once gone
+SG.pendingCOD = {} -- COD mails waiting to be taken: [mailKey] = { amount = n, sender=, subject= }
 SG.ready = false  -- set on PLAYER_LOGIN; ignore money noise before that
 
 -- Move `amount` copper of spending between source buckets (totals and
@@ -255,6 +279,10 @@ function SG:LogActivity(amount, source)
         trainer = self:ContextActive("trainer") and 1 or 0,
         taxi = self:ContextActive("taxi") and 1 or 0,
         bank = self:ContextActive("bank") and 1 or 0,
+        barber = p.barber and 1 or 0,
+        transmog = p.transmog and 1 or 0,
+        talent = self:FlagFresh("talent") and 1 or 0,
+        lfg = self:FlagFresh("lfg") and 1 or 0,
     }
     table.insert(self.db.log, entry)
     while #self.db.log > 100 do table.remove(self.db.log, 1) end
@@ -373,6 +401,30 @@ function SG:OnMoney()
             self:CheckLockedDip()
             return
         end
+        -- COD mail: taking a cash-on-delivery mail deducts its price.
+        -- No researched addon handles COD, so this is new: the inbox
+        -- scan records the COD amount, and the matching spend is
+        -- filed as COD instead of "other". Exact match first, then
+        -- the largest fitting entry — a bigger delta means the COD
+        -- price plus something else in one tick, and the rest falls
+        -- through to the checks below.
+        local codKey, cod = nil, nil
+        for key, c in pairs(self.pendingCOD) do
+            if c.amount == (-delta) then codKey, cod = key, c; break end
+        end
+        if not cod then
+            for key, c in pairs(self.pendingCOD) do
+                if c.amount < (-delta) and (not cod or c.amount > cod.amount) then
+                    codKey, cod = key, c
+                end
+            end
+        end
+        if cod then
+            self.pendingCOD[codKey] = nil
+            self:RecordDelta(char, -cod.amount, "cod")
+            delta = delta + cod.amount
+            if delta == 0 then self:CheckLockedDip(); return end
+        end
         if self:ContextActive("bank") then
             -- bank deposit (personal, guild or warband): a money move,
             -- like mailing gold to an alt — not spending
@@ -412,13 +464,36 @@ function SG:OnMoney()
             self:CheckLockedDip()
             return
         end
+        if self:FlagFresh("talent") then
+            -- talent respec, confirmed at a class trainer: checked
+            -- before the trainer window, or it would file as Training
+            p.talent = false
+            self:RecordDelta(char, delta, "talent")
+            self:CheckLockedDip()
+            return
+        end
         if self:ContextActive("trainer") then
             -- learning a spell/ability at a class trainer
             self:RecordDelta(char, delta, "trainer")
             self:CheckLockedDip()
             return
         end
-        if self:ContextActive("taxi") then
+        if p.taxiCost and p.taxiCost > 0 and GetTime() - (p.taxiAt or 0) <= 5 then
+            -- exact fare from the TakeTaxiNode hook (pH's method)
+            local fare = p.taxiCost
+            p.taxiCost = 0
+            p.taxi = false
+            p.taxiClosedAt = 0
+            if (-delta) <= fare then
+                self:RecordDelta(char, delta, "taxi")
+                self:CheckLockedDip()
+                return
+            end
+            -- a bigger delta means the fare plus something else in one
+            -- tick: the fare part is a taxi fare, the rest is judged below
+            self:RecordDelta(char, -fare, "taxi")
+            delta = delta + fare
+        elseif self:ContextActive("taxi") then
             -- flight master fare: the taxi map closes as the flight
             -- starts, so the window may already be closed when the
             -- money changes (hence the grace period in ContextActive)
@@ -429,6 +504,19 @@ function SG:OnMoney()
         if self:ContextActive("trade") then
             -- gold given to another player in the trade window
             self:RecordDelta(char, delta, "trade")
+            self:CheckLockedDip()
+            return
+        end
+        if p.barber then
+            -- a haircut at the barber shop: paid while the window is open
+            self:RecordDelta(char, delta, "barber")
+            self:CheckLockedDip()
+            return
+        end
+        if p.transmog then
+            -- transmogrifying gear: paid while the window is open
+            -- (Accountant tracks this the same way)
+            self:RecordDelta(char, delta, "transmog")
             self:CheckLockedDip()
             return
         end
@@ -532,6 +620,13 @@ function SG:OnMoney()
         self:RecordDelta(char, remaining, "quest")
         return
     end
+    if self:FlagFresh("lfg") then
+        -- dungeon-finder completion reward: the gold arrives just
+        -- after LFG_COMPLETION_REWARD fires
+        p.lfg = false
+        self:RecordDelta(char, remaining, "lfg")
+        return
+    end
     if p.merchant then
         self:RecordDelta(char, remaining, "vendor")
         return
@@ -552,9 +647,19 @@ end
 function SG:ScanInbox()
     local n = GetInboxNumItems() or 0
     local seen = {}
+    local seenCod = {}
     for i = 1, n do
-        local _, _, sender, subject, money = GetInboxHeaderInfo(i)
+        local _, _, sender, subject, money, cod = GetInboxHeaderInfo(i)
         money = money or 0
+        -- COD mail: the amount to pay is the 6th return, not the
+        -- money field. No researched addon handles COD — this is new.
+        if cod and cod > 0 then
+            local codKey = mailKey(sender, subject, cod)
+            seenCod[codKey] = true
+            if not self.pendingCOD[codKey] then
+                self.pendingCOD[codKey] = { amount = cod, sender = sender, subject = subject }
+            end
+        end
         if money > 0 then
             local key = mailKey(sender, subject, money)
             seen[key] = true
@@ -592,6 +697,9 @@ function SG:ScanInbox()
     for key, _ in pairs(self.claimedMail) do
         if not seen[key] then self.claimedMail[key] = nil end
     end
+    for key, _ in pairs(self.pendingCOD) do
+        if not seenCod[key] then self.pendingCOD[key] = nil end
+    end
 end
 
 -- ------------------------------------------------------------------ events --
@@ -615,8 +723,18 @@ end)
 
 SG:Register("PLAYER_MONEY", function(self) self:OnMoney() end)
 
-SG:Register("MERCHANT_SHOW", function(self) self.pending.merchant = true end)
-SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0; self.pending.repairAt = 0 end)
+SG:Register("MERCHANT_SHOW", function(self)
+    self.pending.merchant = true
+    -- durability baseline (Accountant): the repair cost at the moment
+    -- the merchant opens, so single-item repairs can be measured
+    self.pending.repairCostBase = GetRepairAllCost() or 0
+end)
+SG:Register("MERCHANT_CLOSED", function(self)
+    self.pending.merchant = false
+    self.pending.repair = 0
+    self.pending.repairAt = 0
+    self.pending.repairCostBase = 0
+end)
 
 SG:Register("AUCTION_HOUSE_SHOW", function(self) self.pending.ah = true end)
 SG:Register("AUCTION_HOUSE_CLOSED", function(self) self.pending.ah = false end)
@@ -626,8 +744,24 @@ SG:Register("AUCTION_HOUSE_CLOSED", function(self) self.pending.ah = false end)
 -- change can arrive after the close
 SG:Register("TRAINER_SHOW", function(self) self.pending.trainer = true end)
 SG:Register("TRAINER_CLOSED", function(self) self.pending.trainer = false; self.pending.trainerClosedAt = GetTime() end)
-SG:Register("TAXIMAP_OPENED", function(self) self.pending.taxi = true end)
-SG:Register("TAXIMAP_CLOSED", function(self) self.pending.taxi = false; self.pending.taxiClosedAt = GetTime() end)
+SG:Register("TAXIMAP_OPENED", function(self)
+    self.pending.taxi = true
+    self.pending.taxiTaken = false
+    self.pending.taxiCost = 0
+end)
+-- The grace after the map closes only applies if a flight was
+-- actually taken (the TakeTaxiNode hook below records that). Closing
+-- the map without flying leaves no grace, so a purchase made just
+-- after doesn't file as a fare.
+SG:Register("TAXIMAP_CLOSED", function(self)
+    self.pending.taxi = false
+    if self.pending.taxiTaken then
+        self.pending.taxiClosedAt = GetTime()
+    else
+        self.pending.taxiClosedAt = 0
+    end
+    self.pending.taxiTaken = false
+end)
 SG:Register("TRADE_SHOW", function(self) self.pending.trade = true end)
 SG:Register("TRADE_CLOSED", function(self) self.pending.trade = false; self.pending.tradeClosedAt = GetTime() end)
 -- Bank frames: which events fire is disputed — Gold Digger says
@@ -636,6 +770,19 @@ SG:Register("TRADE_CLOSED", function(self) self.pending.trade = false; self.pend
 -- still register GUILDBANKFRAME_OPENED / CLOSED. Register both, so
 -- whichever the Forever client fires is caught. A bank deposit or
 -- withdrawal is a money move either way (personal, guild or warband).
+-- Barber and transmog (Accountant tracks transmog the same way):
+-- the cost is paid while the window is open, so the flag clears on
+-- close — unlike taxi and loot, whose money arrives after the close.
+SG:Register("BARBER_SHOP_OPEN", function(self) self.pending.barber = true end)
+SG:Register("BARBER_SHOP_CLOSE", function(self) self.pending.barber = false end)
+SG:Register("TRANSMOGRIFY_OPEN", function(self) self.pending.transmog = true end)
+SG:Register("TRANSMOGRIFY_CLOSE", function(self) self.pending.transmog = false end)
+-- Talent respec and dungeon-finder rewards arrive as a money change
+-- just after their event fires, so each leaves a short-lived flag
+-- (FlagFresh, same 5s grace as the other contexts).
+SG:Register("CONFIRM_TALENT_WIPE", function(self) self.pending.talent = true; self.pending.talentAt = GetTime() end)
+SG:Register("LFG_COMPLETION_REWARD", function(self) self.pending.lfg = true; self.pending.lfgAt = GetTime() end)
+
 SG:Register("GUILDBANKFRAME_OPENED", function(self) self.pending.bank = true end)
 SG:Register("GUILDBANKFRAME_CLOSED", function(self) self.pending.bank = false; self.pending.bankClosedAt = GetTime() end)
 SG:Register("BANKFRAME_OPENED", function(self) self.pending.bank = true end)
@@ -768,6 +915,43 @@ SG:Register("MAIL_INBOX_UPDATE", function(self) self:ScanInbox() end)
 SG:Register("MAIL_SHOW", function(self) self.pending.mailOpen = true; self:ScanInbox() end)
 SG:Register("MAIL_CLOSED", function(self) self.pending.mailOpen = false; self.pending.mailSending = false end)
 
+-- Single-item cursor repairs (Accountant's method): a Repair All
+-- click is caught by the hook, but repairing one item with the
+-- cursor never calls RepairAllItems. Accountant baselines the repair
+-- cost at MERCHANT_SHOW and, on UPDATE_INVENTORY_DURABILITY, files
+-- the money drop as a repair. The drop is capped at the repair-cost
+-- drop, so a purchase made just before the repair can't be swept
+-- into it, and the baseline is refreshed after each repair so
+-- sequential single repairs are each measured. If the money hasn't
+-- dropped yet when the event fires, a flag is left for OnMoney
+-- instead (same 5s guard as the Repair All flag).
+function SG:OnDurabilityChange()
+    local p = self.pending
+    if not p.merchant or not p.repairCostBase or p.repairCostBase <= 0 then return end
+    local newCost = GetRepairAllCost() or 0
+    if newCost >= p.repairCostBase then return end
+    local costDrop = p.repairCostBase - newCost
+    p.repairCostBase = newCost
+    if p.repair and p.repair > 0 then return end -- Repair All hook owns it
+    local char = self:Char()
+    local cash = GetMoney()
+    local last = char.lastMoney or cash
+    if cash < last then
+        -- money already dropped: file it now (capped at the cost drop)
+        -- and sync lastMoney so the PLAYER_MONEY event for this same
+        -- repair doesn't file the drop a second time as a purchase
+        local amount = math.min(costDrop, last - cash)
+        if amount > 0 then
+            self:RecordDelta(char, -amount, "repair")
+            char.lastMoney = cash
+        end
+    else
+        p.repair = costDrop
+        p.repairAt = GetTime()
+    end
+end
+SG:Register("UPDATE_INVENTORY_DURABILITY", function(self) self:OnDurabilityChange() end)
+
 -- Repairs: the established approach (GoldLedger, Gold Digger) is to
 -- hook RepairAllItems and capture GetRepairAllCost() there, *before*
 -- the money event fires. Checking the cost after the fact always
@@ -782,6 +966,23 @@ if RepairAllItems then
     hooksecurefunc("RepairAllItems", function()
         local cost = GetRepairAllCost() or 0
         if cost > 0 then SG.pending.repair = cost; SG.pending.repairAt = GetTime() end
+    end)
+end
+
+-- Taxi fares (pH's method): TakeTaxiNode fires when the player picks
+-- a destination, before the money is deducted, and TaxiNodeCost
+-- gives the exact fare. If the cost comes back 0 or nil, pH waits
+-- 0.1s and takes the money delta instead; here the window grace in
+-- OnMoney is that fallback.
+if TakeTaxiNode then
+    hooksecurefunc("TakeTaxiNode", function(nodeIndex)
+        local cost = 0
+        if TaxiNodeCost then cost = TaxiNodeCost(nodeIndex) or 0 end
+        SG.pending.taxiTaken = true
+        if cost > 0 then
+            SG.pending.taxiCost = cost
+            SG.pending.taxiAt = GetTime()
+        end
     end)
 end
 

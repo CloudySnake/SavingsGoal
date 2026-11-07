@@ -103,8 +103,8 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
     elseif cmd == "reclassify" then
         local amountText, from, to = rest:match("^(%S+)%s+(%S+)%s+(%S+)%s*$")
         local amount = amountText and SG:ParseGold(amountText)
-        local incomeSources = { ah = true, vendor = true, quest = true, loot = true, trade = true, other = true }
-        local spendingSources = { ah = true, vendor = true, repair = true, mail = true, trade = true, trainer = true, taxi = true, other = true }
+        local incomeSources = { ah = true, vendor = true, quest = true, loot = true, trade = true, lfg = true, other = true }
+        local spendingSources = { ah = true, vendor = true, repair = true, mail = true, cod = true, trade = true, trainer = true, taxi = true, barber = true, transmog = true, talent = true, other = true }
         from = from and from:lower()
         to = to and to:lower()
         -- income first, then spending: the same command fixes a
@@ -122,7 +122,7 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " of " .. kind .. " from '" .. from .. "' to '" .. to .. "'")
             SG:RefreshUI(); SG:RefreshBroker()
         else
-            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, trade, other; spending: ah, vendor, repair, mail, trade, trainer, taxi, other")
+            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, trade, lfg, other; spending: ah, vendor, repair, mail, cod, trade, trainer, taxi, barber, transmog, talent, other")
         end
     elseif cmd == "mail" then
         local any = false
@@ -131,6 +131,12 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             print("|cff33ff99SavingsGoal:|r mail: " .. SG:FormatGold(m.amount) .. " " .. m.kind
                 .. (m.sender and (" from " .. m.sender) or "")
                 .. (m.subject and (" — " .. m.subject) or ""))
+        end
+        for _, c in pairs(SG.pendingCOD) do
+            any = true
+            print("|cff33ff99SavingsGoal:|r cod: " .. SG:FormatGold(c.amount)
+                .. (c.sender and (" from " .. c.sender) or "")
+                .. (c.subject and (" — " .. c.subject) or ""))
         end
         if not any then
             print("|cff33ff99SavingsGoal:|r no money mail tracked right now (open the mailbox to scan it)")
@@ -152,9 +158,10 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             for i = math.max(1, #log - 9), #log do
                 local e = log[i]
                 local function yn(v) return v == 1 and "yes" or "no" end
-                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s, trade %s, trainer %s, taxi %s, bank %s)",
+                print(string.format("|cff33ff99SavingsGoal:|r %s %s %s (loot %s, window %s, merch %s, quest %s, trade %s, trainer %s, taxi %s, bank %s, barber %s, transmog %s, talent %s, lfg %s)",
                     e.t, SG:FormatGold(e.amount), e.source, SG:FormatGold(e.loot or 0),
-                    yn(e.win), yn(e.merch), yn(e.quest), yn(e.trade), yn(e.trainer), yn(e.taxi), yn(e.bank)))
+                    yn(e.win), yn(e.merch), yn(e.quest), yn(e.trade), yn(e.trainer), yn(e.taxi), yn(e.bank),
+                    yn(e.barber), yn(e.transmog), yn(e.talent), yn(e.lfg)))
             end
         end
     elseif cmd == "minimap" then

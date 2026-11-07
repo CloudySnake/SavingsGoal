@@ -7,9 +7,10 @@ M.state = {
     money = 0,                 -- copper, returned by GetMoney()
     playerName = "Testrogue",
     realmName = "Testrealm",
-    inbox = {},                -- { sender=, subject=, money= }
+    inbox = {},                -- { sender=, subject=, money=, cod= }
     time = 1000000,            -- GetTime()
     repairCost = 0,            -- GetRepairAllCost()
+    taxiCost = 0,              -- TaxiNodeCost()
     lootSlots = {},            -- { coin=bool, quantity=, name= } per loot-window slot
 }
 
@@ -24,6 +25,7 @@ function M.reset()
     M.state.inbox = {}
     M.state.time = 1000000
     M.state.repairCost = 0
+    M.state.taxiCost = 0
     M.state.lootSlots = {}
     M.hooks = {}
     M.frames = {}
@@ -38,6 +40,8 @@ end
 function GetMoney() return M.state.money end
 function GetRepairAllCost() return M.state.repairCost end
 function RepairAllItems(...) end -- hooked by core.lua; tests drive it via callHook
+function TakeTaxiNode(...) end -- hooked by core.lua; tests drive it via callHook
+function TaxiNodeCost(nodeIndex) return M.state.taxiCost end
 function UnitName(unit) return M.state.playerName end
 function GetRealmName() return M.state.realmName end
 function GetTime() return M.state.time end
@@ -64,7 +68,7 @@ function GetInboxHeaderInfo(i)
     if not m then return nil end
     -- packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft,
     -- hasItem, wasRead, wasReturned, textCreated, canReply, isGM
-    return nil, nil, m.sender, m.subject, m.money, 0, 30, false, true, false, false, true, false
+    return nil, nil, m.sender, m.subject, m.money, m.cod or 0, 30, false, true, false, false, true, false
 end
 
 function hooksecurefunc(name, fn)
