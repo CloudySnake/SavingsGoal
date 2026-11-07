@@ -12,7 +12,7 @@ Checked 7 Nov 2026. Client 1.60.1 / Interface 16001. Live folder is `_forever_`,
 ## The set — 7 plus ours
 
 - [ ] **Titan Panel 9.3.5** (15 Oct) — the bar. Needed for SavingsGoal's headline feed. If `Titan Panel [Classic]` shows as Incompatible, disable it. Don't drag plugins around — there's a known bug where they can disappear on reload.
-- [ ] **SavingsGoal 1.0.0** (ours, manual install) — copy the `SavingsGoal` folder into `_forever_/Interface/AddOns/`. Titan Panel covers its libraries (LibStub, LibDataBroker-1.1, LibDBIcon-1.0). `/sg` opens it.
+- [ ] **SavingsGoal 1.0.1** (ours, manual install) — copy the `SavingsGoal` folder into `_forever_/Interface/AddOns/`. Titan Panel covers its libraries (LibStub, LibDataBroker-1.1, LibDBIcon-1.0). `/sg` opens it.
 - [ ] **Auctionator 341** (13 Oct) — AH search, posting, shopping lists, price history. Your DE-flip tool: scan, compare green price vs mat prices, post mats.
 - [ ] **Baganator** (Forever build) — one window / sorted categories, search across all characters. Needs Syndicator — CurseForge installs it automatically. Pick this *or* Bagnon, not both.
 - [ ] **Aurarium** (updated 3 Nov) — account-wide gold history, per-character, by day/month. Needs Arcane Wizard Library — CurseForge installs it automatically.
@@ -34,7 +34,7 @@ Optional, small: **What's Training?** — what trainer skills you can buy next a
 - [ ] `/sg` opens the SavingsGoal info screen; Titan bar shows safe-to-spend + top goal.
 - [ ] Buy/sell something: income lands under the right source in SavingsGoal.
 - [ ] Mail gold to the bank alt: logged as a money move, not income/spending.
-- [ ] Set a goal, seed it, check the forecast math looks sane.
+- [ ] Set a goal via **Add goal** (name → Next → target in gold), seed it, check the forecast math looks sane.
 - [ ] Auctionator: run a scan, check a green's tooltip price.
 - [ ] Baganator: search finds an item across bags/bank/alts.
 - [ ] Leatrix: sell junk at a vendor, repair happens automatically.
