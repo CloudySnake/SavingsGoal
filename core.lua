@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.7"
+SG.VERSION = "1.0.8"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -74,12 +74,20 @@ function SG:FormatEta(days) -- "~100 days" / "~48 years"; nil -> "no surplus yet
 end
 
 function SG:OwnChar(name)
-    -- any character we've ever seen on this account counts as "own"
+    -- any character we've ever seen on this account counts as "own".
+    -- Compare bare names (before the first "-"), case-insensitively,
+    -- and plain strings only: the inbox sender can arrive as just
+    -- "Nox", or as the full "Nox-CAMWOW EU4 Realm 1 PvE", and the
+    -- old pattern match failed on the full form (it demanded a
+    -- trailing "-" after the realm, and "-" in a Lua pattern is a
+    -- quantifier, not a literal). That made mail from your own alt
+    -- look like a stranger's, so it landed in "Other" income.
     if not name then return false end
+    local bare = (name:match("^([^-]+)") or name):lower()
     for key, _ in pairs(self.db.chars) do
-        if key == name .. "-" .. (GetRealmName() or "") or key:match("^" .. name .. "%-") then
-            return true
-        end
+        if key:lower() == name:lower() then return true end
+        local kbare = (key:match("^([^-]+)") or key):lower()
+        if kbare == bare then return true end
     end
     return false
 end
@@ -108,6 +116,7 @@ function SG:InitDB()
     if s.spendBuffer == nil then s.spendBuffer = 0 end -- copper never locked
     if s.dailyKeep == nil then s.dailyKeep = { mode = "pct", value = 0 } end -- held back for spending each day; 0 = off
     if s.look == nil then s.look = "modern" end -- info-screen look: "modern" or "classic"
+    db.outgoingMoves = db.outgoingMoves or {} -- sent transfers awaiting receipt: {amount=, day=, from=}
     self.db = db
 end
 
@@ -161,6 +170,35 @@ function SG:RecordMoneyMove(char, amount) -- amount signed; never touches income
     char.moneyMoves = char.moneyMoves + math.abs(amount)
 end
 
+-- Outgoing transfer: record the move on the sender and leave a note in
+-- the shared ledger so the receiving character can recognise the same
+-- amount as a transfer even if its inbox scan missed the mail (sender
+-- format, timing, mailbox already open). Deduped: the same amount
+-- from the same character on the same day is one note.
+function SG:RecordOutgoingMove(char, amount)
+    self:RecordMoneyMove(char, -amount)
+    self.db.outgoingMoves = self.db.outgoingMoves or {}
+    for _, m in ipairs(self.db.outgoingMoves) do
+        if m.amount == amount and m.from == self:CharKey() and m.day == self:TodayKey() then return end
+    end
+    table.insert(self.db.outgoingMoves, { amount = amount, day = self:TodayKey(), from = self:CharKey() })
+end
+
+-- Consume a ledger note matching an incoming amount, if any.
+function SG:TakeOutgoingMove(delta)
+    self.db.outgoingMoves = self.db.outgoingMoves or {}
+    for i = #self.db.outgoingMoves, 1, -1 do
+        local m = self.db.outgoingMoves[i]
+        if self:DaysBetween(m.day, self:TodayKey()) > 7 then
+            table.remove(self.db.outgoingMoves, i)
+        elseif m.amount == delta and m.from ~= self:CharKey() then
+            table.remove(self.db.outgoingMoves, i)
+            return true
+        end
+    end
+    return false
+end
+
 function SG:OnMoney()
     if not self.ready then return end
     local char = self:Char()
@@ -179,7 +217,7 @@ function SG:OnMoney()
             return
         end
         if p.sendMoney > 0 and (-delta) == p.sendMoney then
-            self:RecordMoneyMove(char, -p.sendMoney)
+            self:RecordOutgoingMove(char, p.sendMoney)
             p.sendMoney = 0
             return
         end
@@ -200,6 +238,12 @@ function SG:OnMoney()
             end
             return
         end
+    end
+    if self:TakeOutgoingMove(delta) then
+        -- transfer from another of your characters, recognised from
+        -- the sender's ledger note even though the inbox scan missed it
+        self:RecordMoneyMove(char, delta)
+        return
     end
     if p.loot > 0 and delta == p.loot then
         p.loot = 0
@@ -304,7 +348,7 @@ SG:Register("MAIL_SEND_SUCCESS", function(self)
     if amt and amt > 0 then
         -- assumption (documented in SPEC): gold mailed goes to your own bank alt.
         -- If PLAYER_MONEY hasn't fired yet, its delta arrives next: swallow it.
-        self:RecordMoneyMove(self:Char(), -amt)
+        self:RecordOutgoingMove(self:Char(), amt)
         self.recentMoveOut = amt
     end
 end)

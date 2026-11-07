@@ -170,6 +170,44 @@ function SG:CharSafeToSpend(char)
     return math.max(0, math.min(char.lastMoney or 0, self:SafeToSpend()))
 end
 
+-- ------------------------------------------------------- money moves --
+-- Parse "1g", "50s", "30c", "1g 20s 30c" (or a plain copper number)
+-- into copper; nil for anything else.
+function SG:ParseGold(text)
+    if not text then return nil end
+    text = text:gsub("%s+", ""):lower()
+    if text == "" then return nil end
+    local g = tonumber(text:match("(%d+)g")) or 0
+    local s = tonumber(text:match("(%d+)s")) or 0
+    local c = tonumber(text:match("(%d+)c")) or 0
+    if g > 0 or s > 0 or c > 0 then return g * 10000 + s * 100 + c end
+    return tonumber(text) -- plain number: copper
+end
+
+function SG:MoneyMovesTotal()
+    local t = 0
+    for _, char in pairs(self.db.chars) do t = t + (char.moneyMoves or 0) end
+    return t
+end
+
+-- Reclassify `amount` copper of this character's "Other" income as a
+-- money move (a transfer from your own alt that was misfiled, e.g.
+-- before the inbox/ledger fix). Fixes lifetime income, "Other" and
+-- today's daily income (clamped at zero if the amount was earned on
+-- an earlier day), and adds it to moneyMoves. Returns what moved.
+function SG:ReclassifyMove(amount)
+    local char = self:Char()
+    local other = (char.bySource and char.bySource.other) or 0
+    local n = math.min(amount or 0, other)
+    if n <= 0 then return 0 end
+    char.bySource.other = other - n
+    char.income = (char.income or 0) - n
+    local today = char.daily[self:TodayKey()]
+    if today then today.income = math.max(0, (today.income or 0) - n) end
+    char.moneyMoves = (char.moneyMoves or 0) + n
+    return n
+end
+
 -- ------------------------------------------------------------ look --
 -- Classic vs Modern info-screen look. Modern is the default; Classic
 -- is the pre-1.0.6 layout (single-sentence headline, plain section

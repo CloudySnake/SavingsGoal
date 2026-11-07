@@ -10,6 +10,7 @@ local function help()
     print("  /sg rate <name> <50%|10g> — set the savings rate")
     print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
     print("  /sg look <classic|modern> — switch the info-screen look")
+    print("  /sg move <50s|1g> — reclassify that much 'Other' income as a transfer from your own alt")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -85,6 +86,15 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             SG:RefreshUI(); SG:RefreshBroker()
         else
             print("|cff33ff99SavingsGoal:|r usage: /sg look <classic|modern>")
+        end
+    elseif cmd == "move" then
+        local amount = SG:ParseGold(rest)
+        local moved = amount and SG:ReclassifyMove(amount) or 0
+        if moved > 0 then
+            print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " of 'Other' income as a transfer from your own alt")
+            SG:RefreshUI(); SG:RefreshBroker()
+        else
+            print("|cff33ff99SavingsGoal:|r usage: /sg move <50s|1g> — nothing in 'Other' income to reclassify")
         end
     elseif cmd == "minimap" then
         SG:ToggleMinimap()

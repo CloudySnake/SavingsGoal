@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.7). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.8). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -152,6 +152,14 @@ Switch with the **Look** button at the top of the info screen (it shows the curr
 
 v1.0.7 fixed two glitches in the Modern look spotted from a screenshot: the goal bar's label sat tucked under the bar, so its top — the "~" in "~5 years" first — was clipped behind the bar's bottom edge; it now sits 6px clear below the bar. And goal names / character rows that had no explicit colour came out gold (the default label colour in-game is gold, not white), so Modern now colours goal names white and character rows muted like the other secondary text.
 
+## Transfers between your own characters (v1.0.8)
+
+Gold mailed to your bank alt is a **money move**, not income: it never touches surplus, forecasts or safe-to-spend, and the info screen now shows a "Transfers between own characters" total so you can see it was recognised.
+
+Two things that used to misfile it as "Other" income are fixed: the inbox sender can arrive as the full "Nox-CAMWOW EU4 Realm 1 PvE" (not just "Nox"), which the old check failed on, and if the inbox scan misses a mail for any reason, the sending character now leaves a note in a shared ledger, so the receiving alt recognises the same amount as a transfer when it arrives.
+
+If an amount was already misfiled before this version, fix it on the receiving character with `/sg move <amount>` — e.g. `/sg move 50s` moves 50 silver out of "Other" income into transfers, including today's daily income so the surplus is corrected too.
+
 ## What the info screen shows (v1.0.5 polish)
 
 - **Goal bars** show a % complete, e.g. `25g / 100g (25%)`, and change colour as you get closer: green while working, gold at 75%+, bright green when complete.
@@ -171,6 +179,7 @@ Ideas from other gold addons that are *not* in SavingsGoal yet, deliberately: a 
 /sg rate <name> <50%|10g>    set a goal's savings rate
 /sg keep <50%|1g>            hold back for day-to-day spending (0% switches it off)
 /sg look <classic|modern>   switch the info-screen look
+/sg move <50s|1g>            reclassify that much 'Other' income as a transfer from your own alt
 /sg minimap                  toggle the minimap button
 /sg reset                    wipe ALL SavingsGoal data (asks first)
 ```

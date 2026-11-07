@@ -262,6 +262,15 @@ function SG:RefreshUI()
     end
     nextY(8)
 
+    -- transfers between your own characters: excluded from income
+    -- and surplus, shown here so a transfer is visibly recognised
+    local moves = self:MoneyMovesTotal()
+    if moves > 0 then
+        local ml = label(content, "  Transfers between own characters: " .. self:FormatGold(moves), 11, mr, mg, mb)
+        ml:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(18)
+        nextY(8)
+    end
+
     -- per character
     header("CHARACTERS", "Characters")
     for key, char in pairs(self.db.chars) do
