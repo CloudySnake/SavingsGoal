@@ -155,6 +155,20 @@ function SG:SafeToSpend()
     return math.max(0, safe)
 end
 
+-- Per-character safe-to-spend: what this toon can spend right now, without
+-- mailing gold from another character. Locked gold is virtual — it isn't
+-- tied to any one character — so this is the smaller of the toon's own gold
+-- and the account safe-to-spend. It never tells a toon it can spend gold
+-- that is locked in total, and it needs no assumption about where the
+-- locked gold lives. Caveat, by design: per-toon figures do NOT add up to
+-- the account safe-to-spend — each is that toon's individual maximum.
+-- Accepts a char record, or a char key ("Name-Realm").
+function SG:CharSafeToSpend(char)
+    if type(char) == "string" then char = self.db.chars[char] end
+    if not char then return 0 end
+    return math.max(0, math.min(char.lastMoney or 0, self:SafeToSpend()))
+end
+
 function SG:IncomeBySource()
     local t = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 }
     for _, char in pairs(self.db.chars) do

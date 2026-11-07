@@ -117,6 +117,24 @@ return function(stubs, ADDON)
         assertEq(SG:SafeToSpend(), 60000)
     end)
 
+    test("CharSafeToSpend is min of char gold and account safe", function()
+        local SG = fresh()
+        SG:Char().lastMoney = 100000 -- 10g on this char
+        SG.db.chars["Bankalt-Testrealm"] = { lastMoney = 900000, daily = {} } -- 90g elsewhere
+        -- account 100g, nothing locked: every toon can spend its whole purse
+        assertEq(SG:CharSafeToSpend(SG:Char()), 100000)
+        assertEq(SG:CharSafeToSpend("Bankalt-Testrealm"), 900000)
+        -- lock 60g: account safe is 40g, so the rich char is capped at 40g
+        -- while the 10g char is still fully spendable; per-toon figures
+        -- deliberately do not sum to the account safe (40g, not 50g)
+        local g = SG:AddGoal("Mount", 100)
+        SG:SetSeed(g, 60)
+        assertEq(SG:SafeToSpend(), 400000)
+        assertEq(SG:CharSafeToSpend(SG:Char()), 100000)
+        assertEq(SG:CharSafeToSpend("Bankalt-Testrealm"), 400000)
+        assertEq(SG:CharSafeToSpend("Nobody-Testrealm"), 0)
+    end)
+
     test("SetRate parsing", function()
         local SG = fresh()
         local g = SG:AddGoal("Mount", 100)

@@ -183,8 +183,9 @@ function SG:RefreshUI()
     local ch = label(content, "Characters", 13)
     ch:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(22)
     for key, char in pairs(self.db.chars) do
-        local l = label(content, string.format("  %s: %s  (+%s / -%s)",
+        local l = label(content, string.format("  %s: %s (safe %s)  (+%s / -%s)",
             key, self:FormatGoldShort(char.lastMoney or 0),
+            self:FormatGoldShort(self:CharSafeToSpend(char)),
             self:FormatGoldShort(char.income or 0), self:FormatGoldShort(char.outgoing or 0)), 11)
         l:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(18)
     end

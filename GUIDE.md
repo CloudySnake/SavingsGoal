@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.3). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.4). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -74,6 +74,14 @@ safe to spend = account total − seed − saved − spend buffer
 - **Spend buffer** is an optional minimum you never want locked (repairs, etc.).
 
 If seed and saved are both 0, safe to spend equals your account total. That is correct — nothing is locked yet.
+
+### Per-character safe to spend
+
+The info screen's **Characters** list also shows a safe figure per toon, e.g. `Rogue-Realm: 10g (safe 10g) (+... / -...)`.
+
+Locked gold is virtual — it isn't tied to any one character — so per-toon safe is the smaller of that toon's own gold and the account safe-to-spend: what that toon can spend right now, without mailing gold from another character. Example: account total 100g, locked 60g, account safe 40g — a toon holding 10g shows safe 10g, a toon holding 85g shows safe 40g.
+
+Per-toon figures deliberately do **not** add up to the account safe — each is that toon's individual maximum. Mailing gold between your own characters is easy, and the addon tracks it as a money move (not income), so the account safe is still the real total limit; per-toon safe just tells you whether you need a mail run first.
 
 ### Surplus
 
