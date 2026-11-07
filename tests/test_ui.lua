@@ -302,6 +302,25 @@ return function(stubs, ADDON)
         assertEq(anyVisibleMatching("Keeping for spending: 1g/day"), true)
     end)
 
+    test("Info screen shows goal % and today's net", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        char.daily[SG:TodayKey()] = { income = 20000, outgoing = 5000 }
+        local g = SG:AddGoal("Epic Mount", 100)
+        SG:SetSeed(g, 25) -- 25g of 100g
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("25%%"), true)
+        assertEq(anyVisibleMatching("Today:"), true)
+        assertEq(anyVisibleMatching("net 1g 50s 0c"), true)
+        -- the goal bar recorded the 25g value and the green (<75%) colour
+        local found = false
+        for _, f in ipairs(stubs.frames) do
+            if f._barValue == 250000 then found = true end
+        end
+        assertEq(found, true)
+    end)
+
     test("BrokerText shows years for huge ETAs", function()
         local SG = fresh()
         dofile(ADDON .. "broker.lua")

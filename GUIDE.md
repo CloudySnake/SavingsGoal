@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.4). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.5). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -140,6 +140,15 @@ To check which one it is, open `/sg` and look at:
 - The goal's **saved** figure, e.g. `0g / 100g` — if this is still 0 after a new-day login with a real surplus, that's a bug; report it with the surplus figure.
 
 `/sg list` prints the same numbers to chat.
+
+## What the info screen shows (v1.0.5 polish)
+
+- **Goal bars** show a % complete, e.g. `25g / 100g (25%)`, and change colour as you get closer: green while working, gold at 75%+, bright green when complete.
+- **Today** line under the daily surplus: today's income, spending and net in full gold/silver/copper, e.g. `Today: +2g 0s 0c / -0g 50s 0c (net 1g 50s 0c)`.
+- **Goal complete** prints a one-time chat line — `Goal complete: Mount — 100g saved!` — when a goal fills up, whether by seeding it or by surplus. It only ever prints once per goal.
+- **Per-character safe to spend** in the Characters list (see above).
+
+Ideas from other gold addons that are *not* in SavingsGoal yet, deliberately: a 30-day projected-pace graph, gold/hour while farming, and multiple movable tracker windows. Those are possible follow-ups if they prove useful in play — the addon stays lean for now.
 
 ## Slash commands
 

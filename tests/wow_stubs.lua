@@ -111,11 +111,11 @@ local function newFrame()
         return t
     end
     function f:SetScrollChild(child) self._scrollChild = child end
-    -- StatusBar methods (no-ops: layout tests only care about visibility)
+    -- StatusBar methods: record colour/value so polish tests can check them
     function f:SetStatusBarTexture(...) end
-    function f:SetStatusBarColor(...) end
-    function f:SetMinMaxValues(...) end
-    function f:SetValue(...) end
+    function f:SetStatusBarColor(r, g, b) self._barColor = { r, g, b } end
+    function f:SetMinMaxValues(a, b) self._barMinMax = { a, b } end
+    function f:SetValue(v) self._barValue = v end
     return f
 end
 

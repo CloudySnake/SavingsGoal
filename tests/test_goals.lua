@@ -135,6 +135,42 @@ return function(stubs, ADDON)
         assertEq(SG:CharSafeToSpend("Nobody-Testrealm"), 0)
     end)
 
+    test("GoalPercent and bar colour", function()
+        local SG = fresh()
+        local g = SG:AddGoal("Mount", 100) -- 100g target
+        assertEq(SG:GoalPercent(g), 0)
+        local r, gg, b = SG:GoalBarColor(g)
+        assertEq(r, 0.2)
+        g.seed = 750000 -- 75g: gold bar at 75%
+        assertEq(SG:GoalPercent(g), 75)
+        r, gg, b = SG:GoalBarColor(g)
+        assertEq(r, 1)
+        g.seed = 1000000 -- complete: bright green
+        assertEq(SG:GoalPercent(g), 100)
+        r, gg, b = SG:GoalBarColor(g)
+        assertEq(gg, 1)
+    end)
+
+    test("TodayTotals sums today across characters", function()
+        local SG = fresh()
+        seedDaily(SG, { [0] = { 20000, 5000 }, [1] = { 10000, 0 } })
+        local i, o, n = SG:TodayTotals()
+        assertEq(i, 20000)
+        assertEq(o, 5000)
+        assertEq(n, 15000)
+    end)
+
+    test("AnnounceGoalComplete prints once", function()
+        local SG = fresh()
+        SG:Char().lastMoney = 1000000
+        local g = SG:AddGoal("Mount", 10)
+        SG:SetSeed(g, 10) -- fills it: celebrated set
+        assertEq(g.celebrated, true)
+        g.celebrated = false
+        SG:AnnounceGoalComplete(g)
+        assertEq(g.celebrated, true)
+    end)
+
     test("SetRate parsing", function()
         local SG = fresh()
         local g = SG:AddGoal("Mount", 100)

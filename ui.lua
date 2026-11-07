@@ -106,7 +106,15 @@ function SG:RefreshUI()
     local surplus = self:DailySurplus()
     local sl = label(content, string.format("Daily surplus (trailing %dd): %s",
         self.db.settings.windowDays, self:FormatGold(surplus)), 12)
-    sl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
+    sl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(24)
+
+    local tIn, tOut, tNet = self:TodayTotals()
+    -- Full gold/silver/copper here, not the rounded-to-gold short form:
+    -- today's amounts are often only a few silver, and "2g" for 1g 50s
+    -- would be misleading.
+    local tl = label(content, string.format("Today: +%s / -%s  (net %s)",
+        self:FormatGold(tIn), self:FormatGold(tOut), self:FormatGold(tNet)), 12)
+    tl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
 
     local keep = self:DailyKeepAmount()
     if keep > 0 then
@@ -126,6 +134,7 @@ function SG:RefreshUI()
         local days = self:GoalDaysLeft(g)
         local eta = need <= 0 and "|cff33ff99complete!|r" or self:FormatEta(days)
 
+        self:AnnounceGoalComplete(g) -- one-time chat line if it filled before this version
         local name = label(content, string.format("%d. %s", g.priority or 0, g.name), 13)
         name:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
 
@@ -149,14 +158,15 @@ function SG:RefreshUI()
         bar:SetSize(W - 12, 16)
         bar:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
         bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        bar:SetStatusBarColor(0.2, 0.8, 0.4)
+        local br, bgc, bb = self:GoalBarColor(g)
+        bar:SetStatusBarColor(br, bgc, bb)
         bar:SetMinMaxValues(0, math.max(1, g.target))
         bar:SetValue(math.min(have, g.target))
         local bg = bar:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints(bar)
         bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
-        local bl = label(content, string.format("%s / %s  (%s)   [%s]",
-            self:FormatGoldShort(have), self:FormatGoldShort(g.target), eta, self:RateLabel(g)), 11)
+        local bl = label(content, string.format("%s / %s (%d%%)  (%s)   [%s]",
+            self:FormatGoldShort(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11)
         bl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y - 18)
         nextY(44)
     end

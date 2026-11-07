@@ -58,6 +58,7 @@ function SG:SetSeed(goal, gold)
     -- can't lock more gold than the account holds (minus the spend buffer)
     local maxLock = math.max(0, self:AccountGold() - self:LockedTotal() + (goal.seed or 0) - self.db.settings.spendBuffer)
     goal.seed = math.min(seed, maxLock)
+    self:AnnounceGoalComplete(goal)
     return goal.seed
 end
 
@@ -169,6 +170,45 @@ function SG:CharSafeToSpend(char)
     return math.max(0, math.min(char.lastMoney or 0, self:SafeToSpend()))
 end
 
+-- ------------------------------------------------------------ polish --
+-- % complete for a goal (0-100, capped), and the bar colour for it:
+-- green while working, gold at 75%+, bright green when complete.
+function SG:GoalPercent(goal)
+    if not goal or not goal.target or goal.target <= 0 then return 0 end
+    local have = (goal.seed or 0) + (goal.saved or 0)
+    return math.min(100, math.floor(100 * have / goal.target + 0.5))
+end
+
+function SG:GoalBarColor(goal)
+    if self:GoalNeed(goal) <= 0 then return 0.2, 1, 0.4 end
+    if self:GoalPercent(goal) >= 75 then return 1, 0.84, 0 end
+    return 0.2, 0.8, 0.4
+end
+
+-- Today's net across the account: income, outgoing, net (copper).
+function SG:TodayTotals()
+    local today = self:TodayKey()
+    local income, outgoing = 0, 0
+    for _, char in pairs(self.db.chars) do
+        local d = char.daily and char.daily[today]
+        if d then
+            income = income + (d.income or 0)
+            outgoing = outgoing + (d.outgoing or 0)
+        end
+    end
+    return income, outgoing, income - outgoing
+end
+
+-- One-time celebration when a goal fills up (seed or surplus tick).
+-- Sets goal.celebrated so opening the info screen again never repeats it.
+function SG:AnnounceGoalComplete(goal)
+    if not goal or goal.celebrated then return end
+    if self:GoalNeed(goal) > 0 then return end
+    goal.celebrated = true
+    print("|cff33ff99SavingsGoal:|r Goal complete: " .. goal.name .. " — "
+        .. self:FormatGoldShort(goal.target) .. " saved!")
+end
+
 function SG:IncomeBySource()
     local t = { ah = 0, vendor = 0, quest = 0, loot = 0, other = 0 }
     for _, char in pairs(self.db.chars) do
@@ -231,6 +271,7 @@ function SG:TickGoals()
             local take = math.min(need, claim, pool)
             goal.saved = (goal.saved or 0) + take
             pool = pool - take
+            self:AnnounceGoalComplete(goal)
         end
     end
     if self.RefreshBroker then self:RefreshBroker() end
