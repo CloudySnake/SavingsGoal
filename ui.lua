@@ -178,9 +178,15 @@ end
 --     Fix: capture the text as the user types (EditBoxOnTextChanged,
 --     where `self` IS the edit box) and only use the dialog field as a
 --     fallback via popupEditBox()/popupText().
---  2. OnAccept called StaticPopup_Show for the next popup synchronously.
---     That second popup can be swallowed when Blizzard hides the first
---     one after OnAccept returns. Fix: defer it with C_Timer.After(0, …).
+--  Correction (7 Nov 2026, checked against Blizzard's own StaticPopup.lua,
+--  live branch, Blizzard_StaticPopup/StaticPopup.lua): chaining is NOT
+--  the cause. StaticPopup_Show allocates a different frame for the second
+--  dialog, and StaticPopup_OnClick's dialog:Hide() after OnAccept only
+--  hides the first frame (hide = not OnAccept(...), so a truthy return
+--  keeps it open — which is why invalid input now returns true).
+--  The defer with C_Timer.After(0, …) is kept anyway as belt-and-braces:
+--  it runs after the first popup's hide, and guards the edge case where
+--  no StaticPopup frame is free and a synchronous Show returns nil.
 --  Also fixed in passing: SG_GOAL_TARGET's Enter handler called
 --  `parent:GetScript("OnAccept")`, which is not a frame script and would
 --  error — Enter now calls the same create-goal helper as OnAccept.
