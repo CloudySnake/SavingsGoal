@@ -367,6 +367,34 @@ return function(stubs, ADDON)
         assertEq(anyVisibleMatching("^Characters$"), false)
     end)
 
+    test("Modern look: bar label clears the bar, rows are not gold", function()
+        -- Regression for the 7 Nov 2026 screenshot: the goal bar's
+        -- label sat at bar-top - 18 with a 20px bar, so its top (the
+        -- "~" in "~5 years" first) was hidden behind the bar; and
+        -- goal names / character rows with no explicit colour came
+        -- out gold in-game.
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        SG:AddGoal("Epic Mount", 100)
+        SG:ShowUI()
+        local barY, barH = nil, nil
+        for _, f in ipairs(stubs.frames) do
+            if f._barTexture then barY, barH = f._pointY, f._height end
+        end
+        assertEq(barH, 20)
+        local labelY, nameColor, charColor = nil, nil, nil
+        for _, fs in ipairs(stubs.fontstrings) do
+            if fs._shown and fs._text:find("/ 100g") then labelY = fs._pointY end
+            if fs._shown and fs._text == "1. Epic Mount" then nameColor = fs._textColor end
+            if fs._shown and fs._text:find("safe") then charColor = fs._textColor end
+        end
+        -- label top at least one bar-height + 4px below the bar top
+        assertEq(labelY ~= nil and labelY <= barY - 24, true)
+        assertEq(nameColor and nameColor[1], 1)
+        assertEq(charColor and charColor[1], 0.78)
+    end)
+
     test("BrokerText shows years for huge ETAs", function()
         local SG = fresh()
         dofile(ADDON .. "broker.lua")

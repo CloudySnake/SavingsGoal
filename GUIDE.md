@@ -1,6 +1,6 @@
 # SavingsGoal — Guide
 
-SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.6). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
+SavingsGoal is an account-wide savings addon for **WoW Forever** (Interface 16001, current version 1.0.7). It tracks income vs outgoings per character, lets you set goals — an epic mount, for example — and shows a forecast plus a **safe-to-spend** headline.
 
 This guide covers the bits that confuse people in practice: the Titan Panel bar, what safe-to-spend actually means, and why a goal can look like it's doing nothing.
 
@@ -149,6 +149,8 @@ The info screen has two looks, and you can switch any time — the choice is sav
 - **Classic**: the pre-1.0.6 layout — single-sentence headline ("Safe to spend: … Account total: …"), plain section titles, glossy Blizzard bars.
 
 Switch with the **Look** button at the top of the info screen (it shows the current look), or `/sg look classic` / `/sg look modern`. The outer window stays Blizzard's in both looks, so the title bar, close button, drag and Esc all keep working.
+
+v1.0.7 fixed two glitches in the Modern look spotted from a screenshot: the goal bar's label sat tucked under the bar, so its top — the "~" in "~5 years" first — was clipped behind the bar's bottom edge; it now sits 6px clear below the bar. And goal names / character rows that had no explicit colour came out gold (the default label colour in-game is gold, not white), so Modern now colours goal names white and character rows muted like the other secondary text.
 
 ## What the info screen shows (v1.0.5 polish)
 

@@ -66,7 +66,9 @@ local function newRegion(kind)
     function r:SetTextColor(r, g, b) self._textColor = { r, g, b } end
     function r:SetJustifyH(...) end
     function r:SetSize(...) end
-    function r:SetPoint(...) end
+    -- record the Y offset so layout tests can check clearance, e.g.
+    -- a bar label must sit below its bar, not tucked under it
+    function r:SetPoint(...) local a = { ... }; self._pointY = a[5] end
     function r:Hide() self._shown = false end
     function r:Show() self._shown = true end
     function r:IsShown() return self._shown end
@@ -81,9 +83,9 @@ local function newFrame()
     function f:GetScript(k) return self._scripts[k] end
     function f:RegisterEvent(e) self._events[e] = true end
     function f:UnregisterEvent(e) self._events[e] = nil end
-    function f:SetSize(...) end
+    function f:SetSize(w, h) self._width, self._height = w, h end
     function f:SetHeight(...) end
-    function f:SetPoint(...) end
+    function f:SetPoint(...) local a = { ... }; self._pointY = a[5] end
     function f:SetMovable(...) end
     function f:EnableMouse(...) end
     function f:RegisterForDrag(...) end

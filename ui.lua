@@ -115,8 +115,12 @@ function SG:RefreshUI()
     local W = 520
     local modern = self:Look() == "modern"
     -- muted secondary text only in the modern look; classic uses
-    -- Blizzard's default label colour throughout
+    -- Blizzard's default label colour throughout. (In-game, that
+    -- default turns out gold, not white — see the 7 Nov screenshot:
+    -- goal names and character rows with no explicit colour came out
+    -- gold, so modern must colour them explicitly.)
     local mr, mg, mb = modern and MUTED_R or nil, modern and MUTED_G or nil, modern and MUTED_B or nil
+    local wr, wg, wb = modern and 1 or nil, modern and 1 or nil, modern and 1 or nil
     if lookBtn then lookBtn:SetText(modern and "Modern" or "Classic") end
 
     local function nextY(h) y = y - h; return y end
@@ -177,7 +181,7 @@ function SG:RefreshUI()
     local goals = self:GetGoals()
     if #goals > 0 then header("GOALS") end
     if #goals == 0 then
-        local e = label(content, "No goals yet — click Add goal to save for your first mount.", 12)
+        local e = label(content, "No goals yet — click Add goal to save for your first mount.", 12, mr, mg, mb)
         e:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
     end
     for _, g in ipairs(goals) do
@@ -187,7 +191,7 @@ function SG:RefreshUI()
         local eta = need <= 0 and "|cff33ff99complete!|r" or self:FormatEta(days)
 
         self:AnnounceGoalComplete(g) -- one-time chat line if it filled before this version
-        local name = label(content, string.format("%d. %s", g.priority or 0, g.name), 13)
+        local name = label(content, string.format("%d. %s", g.priority or 0, g.name), 13, wr, wg, wb)
         name:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
 
         local del = smallButton(content, "x", 26, function() self:DeleteGoal(g); self:RefreshUI() end)
@@ -231,15 +235,19 @@ function SG:RefreshUI()
         else
             bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
         end
+        -- Bar label sits BELOW the bar with clearance, not tucked under
+        -- it: at y-18 (bar height 20) its top — the "~" in "~5 years"
+        -- first — was hidden behind the bar's bottom edge in-game
+        -- (screenshot 7 Nov 2026). y-26 leaves a 6px gap.
         local bl = label(content, string.format("%s / %s (%d%%)  (%s)   [%s]",
             self:FormatGoldShort(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11, mr, mg, mb)
-        bl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y - 18)
-        nextY(44)
+        bl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y - 26)
+        nextY(50)
     end
 
     if #goals > 1 then
         local all = self:WaterfallDaysLeft()
-        local wl = label(content, "All goals, focused in priority order: " .. self:FormatEta(all), 12)
+        local wl = label(content, "All goals, focused in priority order: " .. self:FormatEta(all), 12, mr, mg, mb)
         wl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
     end
 
@@ -260,7 +268,7 @@ function SG:RefreshUI()
         local l = label(content, string.format("  %s: %s (safe %s)  (+%s / -%s)",
             key, self:FormatGoldShort(char.lastMoney or 0),
             self:FormatGoldShort(self:CharSafeToSpend(char)),
-            self:FormatGoldShort(char.income or 0), self:FormatGoldShort(char.outgoing or 0)), 11)
+            self:FormatGoldShort(char.income or 0), self:FormatGoldShort(char.outgoing or 0)), 11, mr, mg, mb)
         l:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(18)
     end
 

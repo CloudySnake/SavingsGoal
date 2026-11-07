@@ -2,7 +2,7 @@
 ## Title: SavingsGoal
 ## Notes: Account-wide savings goals with income tracking. No dependencies; Titan Panel and minimap button support built in.
 ## Author: Martin Campbell
-## Version: 1.0.6
+## Version: 1.0.7
 ## SavedVariables: SavingsGoalDB
 ## OptionalDeps: LibStub, LibDataBroker-1.1, LibDBIcon-1.0
 

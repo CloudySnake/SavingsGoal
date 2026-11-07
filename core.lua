@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.6"
+SG.VERSION = "1.0.7"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
