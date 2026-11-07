@@ -66,6 +66,27 @@ local function wipe(parent)
         child:Hide()
         child:SetParent(nil)
     end
+    -- Labels are FontStrings (regions, not frames): GetChildren() never
+    -- returns them, so they must be hidden too. Before this fix every
+    -- RefreshUI() left all previous labels visible at their old positions,
+    -- so once the layout shifted (e.g. a goal added: the "No goals yet"
+    -- line should vanish and everything below moves down) the stale text
+    -- stayed on screen overlapping the new rows — "No goals yet" over the
+    -- goal row, "Income by source" / "Characters" each shown twice.
+    -- (Bug seen in-game 7 Nov 2026; the buttons and bars were wiped fine,
+    -- which is why only the text overlapped.)
+    for _, region in ipairs({ parent:GetRegions() }) do
+        region:Hide()
+    end
+end
+
+-- days-to-goal as a readable label: raw days under two years, years beyond
+-- that. A 7c/day surplus against a 100g goal is ~142,858 days — true, but
+-- useless on screen; "~391 years" says the same thing.
+local function formatEta(days)
+    if days == nil then return "no surplus yet" end
+    if days >= 730 then return "~" .. math.floor(days / 365 + 0.5) .. " years" end
+    return "~" .. days .. " days"
 end
 
 function SG:RefreshUI()
@@ -96,8 +117,7 @@ function SG:RefreshUI()
         local need = self:GoalNeed(g)
         local have = (g.seed or 0) + (g.saved or 0)
         local days = self:GoalDaysLeft(g)
-        local eta = need <= 0 and "|cff33ff99complete!|r"
-            or (days == nil and "no surplus yet" or ("~" .. days .. " days"))
+        local eta = need <= 0 and "|cff33ff99complete!|r" or formatEta(days)
 
         local name = label(content, string.format("%d. %s", g.priority or 0, g.name), 13)
         name:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
@@ -136,8 +156,7 @@ function SG:RefreshUI()
 
     if #goals > 1 then
         local all = self:WaterfallDaysLeft()
-        local wl = label(content, "All goals, focused in priority order: " ..
-            (all == nil and "no surplus yet" or ("~" .. all .. " days")), 12)
+        local wl = label(content, "All goals, focused in priority order: " .. formatEta(all), 12)
         wl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
     end
 

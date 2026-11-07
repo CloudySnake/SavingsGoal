@@ -197,4 +197,64 @@ return function(stubs, ADDON)
         clickAccept("SG_GOAL_RATE", dialog)
         assertEq(g.rate.value, 50)
     end)
+
+    -- helpers for RefreshUI layout tests: texts of currently visible labels
+    local function visibleLabelTexts()
+        local texts = {}
+        for _, fs in ipairs(stubs.fontstrings) do
+            if fs:IsShown() then table.insert(texts, fs:GetText()) end
+        end
+        return texts
+    end
+    local function countVisible(text)
+        local n = 0
+        for _, t in ipairs(visibleLabelTexts()) do if t == text then n = n + 1 end end
+        return n
+    end
+    local function anyVisibleMatching(pattern)
+        for _, t in ipairs(visibleLabelTexts()) do if t:find(pattern) then return true end end
+        return false
+    end
+
+    -- Regression test for 7 Nov 2026 (screenshot): the info screen showed
+    -- overlapping text — "No goals yet" over the goal row, "Characters"
+    -- twice — because wipe() only hid child frames, and labels are
+    -- FontStrings, which GetChildren() never returns.
+    test("RefreshUI hides stale labels when a goal is added", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1522
+        char.bySource.other = 7
+        char.daily[SG:TodayKey()] = { income = 7, outgoing = 0 }
+        SG:ShowUI()
+        assertEq(countVisible("No goals yet — click Add goal to save for your first mount."), 1)
+        assertEq(countVisible("Characters"), 1)
+        SG:AddGoal("Epic Mount", 100)
+        SG:RefreshUI()
+        assertEq(countVisible("No goals yet — click Add goal to save for your first mount."), 0)
+        assertEq(countVisible("Characters"), 1)
+        assertEq(countVisible("1. Epic Mount"), 1)
+    end)
+
+    test("Huge ETAs show in years, not tens of thousands of days", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1522
+        char.bySource.other = 7
+        char.daily[SG:TodayKey()] = { income = 7, outgoing = 0 }
+        SG:AddGoal("Epic Mount", 100)
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("391 years"), true)
+        assertEq(anyVisibleMatching("142858 days"), false)
+    end)
+
+    test("Normal ETAs still show in days", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        char.daily[SG:TodayKey()] = { income = 10000, outgoing = 0 }
+        SG:AddGoal("Epic Mount", 100)
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("~100 days"), true)
+    end)
 end

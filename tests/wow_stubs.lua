@@ -13,6 +13,7 @@ M.state = {
 
 M.hooks = {}   -- hooksecurefunc registry
 M.frames = {}  -- CreateFrame registry (for inspection)
+M.fontstrings = {} -- CreateFontString registry (for inspection)
 
 function M.reset()
     M.state.money = 0
@@ -22,6 +23,7 @@ function M.reset()
     M.state.time = 1000000
     M.hooks = {}
     M.frames = {}
+    M.fontstrings = {}
 end
 
 function M.callHook(name, ...)
@@ -52,19 +54,82 @@ function hooksecurefunc(name, fn)
     table.insert(M.hooks[name], fn)
 end
 
+-- WoW aliases plain Lua lacks
+tinsert = table.insert
+local unpack = unpack or table.unpack
+
+local function newRegion(kind)
+    local r = { _kind = kind, _shown = true, _text = "" }
+    function r:SetText(t) self._text = t or "" end
+    function r:GetText() return self._text end
+    function r:SetFont(...) end
+    function r:SetPoint(...) end
+    function r:Hide() self._shown = false end
+    function r:Show() self._shown = true end
+    function r:IsShown() return self._shown end
+    function r:SetAllPoints(...) end
+    function r:SetColorTexture(...) end
+    return r
+end
+
 local function newFrame()
-    local f = { _scripts = {}, _events = {} }
+    local f = { _scripts = {}, _events = {}, _children = {}, _regions = {}, _shown = false, _parent = nil }
     function f:SetScript(k, fn) self._scripts[k] = fn end
     function f:GetScript(k) return self._scripts[k] end
     function f:RegisterEvent(e) self._events[e] = true end
     function f:UnregisterEvent(e) self._events[e] = nil end
+    function f:SetSize(...) end
+    function f:SetHeight(...) end
+    function f:SetPoint(...) end
+    function f:SetMovable(...) end
+    function f:EnableMouse(...) end
+    function f:RegisterForDrag(...) end
+    function f:Hide() self._shown = false end
+    function f:Show() self._shown = true end
+    function f:IsShown() return self._shown end
+    function f:SetText(t) self._text = t end
+    function f:SetParent(p)
+        if self._parent and self._parent._children then
+            for i, c in ipairs(self._parent._children) do
+                if c == self then table.remove(self._parent._children, i) break end
+            end
+        end
+        self._parent = p
+        if p and p._children then table.insert(p._children, self) end
+    end
+    function f:GetChildren() return unpack(self._children) end
+    function f:GetRegions() return unpack(self._regions) end
+    function f:CreateFontString(name, layer, template)
+        local fs = newRegion("FontString")
+        table.insert(self._regions, fs)
+        table.insert(M.fontstrings, fs)
+        return fs
+    end
+    function f:CreateTexture(name, layer)
+        local t = newRegion("Texture")
+        table.insert(self._regions, t)
+        return t
+    end
+    function f:SetScrollChild(child) self._scrollChild = child end
+    -- StatusBar methods (no-ops: layout tests only care about visibility)
+    function f:SetStatusBarTexture(...) end
+    function f:SetStatusBarColor(...) end
+    function f:SetMinMaxValues(...) end
+    function f:SetValue(...) end
     return f
 end
 
 function CreateFrame(ftype, name, parent, template)
     local f = newFrame()
+    if template == "BasicFrameTemplateWithInset" then
+        f.TitleText = { SetText = function(_, t) end }
+    end
+    if parent then f:SetParent(parent) end
     table.insert(M.frames, f)
     return f
 end
+
+UIParent = CreateFrame("Frame", "UIParent")
+UISpecialFrames = {}
 
 return M
