@@ -14,6 +14,7 @@ local function help()
     print("  /sg reclassify <50s|1g> <from> <to> — move income or spending between categories, e.g. /sg reclassify 50s other loot")
     print("  /sg last — show what the last gain/spend was filed as")
     print("  /sg log — show the last 10 activity-log entries (time, amount, source, what the addon saw)")
+    print("  /sg mail — show money mail the addon has spotted in your inbox (amount, kind, sender, subject)")
     print("  /sg minimap — toggle the minimap button")
     print("  /sg reset — wipe ALL SavingsGoal data (asks for confirmation)")
 end
@@ -122,6 +123,17 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
             SG:RefreshUI(); SG:RefreshBroker()
         else
             print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, trade, other; spending: ah, vendor, repair, mail, trade, trainer, taxi, other")
+        end
+    elseif cmd == "mail" then
+        local any = false
+        for _, m in pairs(SG.pendingMail) do
+            any = true
+            print("|cff33ff99SavingsGoal:|r mail: " .. SG:FormatGold(m.amount) .. " " .. m.kind
+                .. (m.sender and (" from " .. m.sender) or "")
+                .. (m.subject and (" — " .. m.subject) or ""))
+        end
+        if not any then
+            print("|cff33ff99SavingsGoal:|r no money mail tracked right now (open the mailbox to scan it)")
         end
     elseif cmd == "last" then
         local g = SG.lastGain

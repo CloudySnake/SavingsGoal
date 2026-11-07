@@ -341,6 +341,66 @@ return function(stubs, ADDON)
         assertEq(SG:Char().bySource.ah, 0)
     end)
 
+    test("ah: sale proceeds batched with another gain still file the sale as AH", function()
+        -- before this, any batched delta missed every exact match and
+        -- the whole amount fell through to "other" (Martin, 7 Nov 2026:
+        -- 8s 60c from AH sales filed as Other)
+        local SG = fresh(0)
+        stubs.state.inbox = { { sender = "Auction House", subject = "Auction successful: Copper Ore", money = 860 } }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        setMoney(SG, 1360) -- 860 sale + 500 from elsewhere, one delta
+        assertEq(SG:Char().bySource.ah, 860)
+        assertEq(SG:Char().bySource.other, 500)
+    end)
+
+    test("ah: sale detected by subject when the sender is not the auction house", function()
+        -- the sender alone proved unreliable; Accountant checks the
+        -- subject ("Auction successful: ...") instead
+        local SG = fresh(0)
+        stubs.state.inbox = { { sender = "Someone Else", subject = "Auction successful: Copper Ore", money = 860 } }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        local entry = nil
+        for _, m in pairs(SG.pendingMail) do entry = m end
+        assertEq(entry.kind, "ah")
+        assertEq(entry.sender, "Someone Else")
+        assertEq(entry.subject, "Auction successful: Copper Ore")
+        setMoney(SG, 860)
+        assertEq(SG:Char().bySource.ah, 860)
+    end)
+
+    test("ah: two sale mails taken at once both file as AH", function()
+        local SG = fresh(0)
+        stubs.state.inbox = {
+            { sender = "Auction House", subject = "Auction successful: Copper Ore", money = 860 },
+            { sender = "Auction House", subject = "Auction successful: Linen Cloth", money = 500 },
+        }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        setMoney(SG, 1360)
+        assertEq(SG:Char().bySource.ah, 1360)
+        assertEq(SG:Char().bySource.other, 0)
+    end)
+
+    test("mail: MAIL_SHOW scans the inbox, and an early empty scan loses nothing", function()
+        local SG = fresh(0)
+        local function countPending()
+            local n = 0
+            for _, _ in pairs(SG.pendingMail) do n = n + 1 end
+            return n
+        end
+        local mail = { sender = "Auction House", subject = "Auction successful: Copper Ore", money = 860 }
+        stubs.state.inbox = { mail }
+        fire(SG, "MAIL_INBOX_UPDATE")
+        assertEq(countPending(), 1)
+        stubs.state.inbox = {}
+        fire(SG, "MAIL_SHOW") -- inbox not loaded yet: drops the entry...
+        assertEq(countPending(), 0)
+        stubs.state.inbox = { mail }
+        fire(SG, "MAIL_INBOX_UPDATE") -- ...and the next update re-adds it
+        assertEq(countPending(), 1)
+        setMoney(SG, 860)
+        assertEq(SG:Char().bySource.ah, 860)
+    end)
+
     test("ah: an outbid refund bigger than the recorded spend is a move for the rest", function()
         local SG = fresh(100000)
         stubs.state.inbox = { { sender = "Auction House", subject = "Outbid on Copper Ore", money = 1500 } }

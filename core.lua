@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.15"
+SG.VERSION = "1.0.16"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -420,30 +420,47 @@ function SG:OnMoney()
         return
     end
 
-    -- positive delta: match against pending contexts
-    for key, m in pairs(self.pendingMail) do
-        if m.amount == delta then
-            self.pendingMail[key] = nil
-            self.claimedMail[key] = true
-            if m.kind == "move" then
-                self:RecordMoneyMove(char, delta)
-            elseif m.kind == "refund" then
-                self:ReverseSpending(char, delta, "ah")
-            else
-                self:RecordDelta(char, delta, "ah")
-            end
-            return
+    -- positive delta: match against pending mail. An exact match is
+    -- the common case, but the money can arrive batched with another
+    -- gain (several mails taken at once), so a pending mail smaller
+    -- than the delta is taken out of it and the rest is judged on its
+    -- own — the same split the loot fix uses. Before this, any batch
+    -- missed every match and the whole delta fell through to "other".
+    local remaining = delta
+    while remaining > 0 do
+        local matchKey, match = nil, nil
+        for key, m in pairs(self.pendingMail) do
+            if m.amount == remaining then matchKey, match = key, m; break end
         end
+        if not match then
+            for key, m in pairs(self.pendingMail) do
+                if m.amount < remaining and (not match or m.amount > match.amount) then
+                    matchKey, match = key, m
+                end
+            end
+        end
+        if not match then break end
+        self.pendingMail[matchKey] = nil
+        self.claimedMail[matchKey] = true
+        if match.kind == "move" then
+            self:RecordMoneyMove(char, match.amount)
+        elseif match.kind == "refund" then
+            self:ReverseSpending(char, match.amount, "ah")
+        else
+            self:RecordDelta(char, match.amount, "ah")
+        end
+        remaining = remaining - match.amount
     end
-    if self:TakeOutgoingMove(delta) then
+    if remaining == 0 then return end
+    if self:TakeOutgoingMove(remaining) then
         -- transfer from another of your characters, recognised from
         -- the sender's ledger note even though the inbox scan missed it
-        self:RecordMoneyMove(char, delta)
+        self:RecordMoneyMove(char, remaining)
         return
     end
     if self:ContextActive("bank") then
         -- bank withdrawal (personal, guild or warband): a money move, not income
-        self:RecordMoneyMove(char, delta)
+        self:RecordMoneyMove(char, remaining)
         return
     end
     -- Loot used to need an exact match against one loot message, so it
@@ -451,7 +468,6 @@ function SG:OnMoney()
     -- money delta, or a second loot overwrote the first before the
     -- money arrived. Now the pending loot accumulates, and a delta is
     -- split: the looted part is loot, the rest is judged on its own.
-    local remaining = delta
     if p.loot > 0 then
         local lootPart = math.min(remaining, p.loot)
         p.loot = p.loot - lootPart
@@ -525,7 +541,13 @@ function SG:ScanInbox()
             seen[key] = true
             if not self.pendingMail[key] and not self.claimedMail[key] then
                 local kind = nil
-                if sender and sender:lower():find("auction") then
+                -- AH mail by sender or by subject (Accountant checks
+                -- the subject: "Auction successful: ..."). The sender
+                -- alone proved unreliable — a sale arrived with no
+                -- matching sender and fell through to "other".
+                local isAH = (sender and sender:lower():find("auction"))
+                    or (subject and subject:lower():find("auction successful", 1, true))
+                if isAH then
                     -- an "Outbid" mail returns a bid already paid: it
                     -- reverses the earlier AH expense, it is not income
                     if subject and subject:lower():find("outbid", 1, true) then
@@ -538,7 +560,7 @@ function SG:ScanInbox()
                 end
                 -- unknown senders: left untracked, counted as ordinary income when taken
                 if kind then
-                    self.pendingMail[key] = { amount = money, kind = kind }
+                    self.pendingMail[key] = { amount = money, kind = kind, sender = sender, subject = subject }
                 end
             end
         end
@@ -720,7 +742,11 @@ end
 
 SG:Register("MAIL_INBOX_UPDATE", function(self) self:ScanInbox() end)
 
-SG:Register("MAIL_SHOW", function(self) self.pending.mailOpen = true end)
+-- scan on open as well as on inbox updates: a sale mail must be
+-- registered before the player can take it, and the inbox contents
+-- are re-read on the next update anyway, so an early empty scan
+-- cannot lose anything
+SG:Register("MAIL_SHOW", function(self) self.pending.mailOpen = true; self:ScanInbox() end)
 SG:Register("MAIL_CLOSED", function(self) self.pending.mailOpen = false; self.pending.mailSending = false end)
 
 -- Repairs: the established approach (GoldLedger, Gold Digger) is to
