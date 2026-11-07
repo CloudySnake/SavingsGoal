@@ -167,22 +167,119 @@ function SG:RefreshUI()
 end
 
 -- ------------------------------------------------------------------ popups --
+-- Bug (7 Nov 2026): clicking Next on SG_GOAL_NAME did nothing and the
+-- popup stayed on screen. Two causes, both in this section:
+--  1. OnAccept read `self.editBox:GetText()` directly. Forever runs on the
+--     Retail (12.x) codebase, where that field is not reliable — other
+--     12.0 addons guard `dialog.editBox` / `dialog.EditBox` /
+--     `_G[dialogName.."EditBox"]`, and note it can be nil in OnShow.
+--     A nil editBox throws inside OnAccept, Blizzard never reaches the
+--     Hide() after OnAccept, so the popup just stays there.
+--     Fix: capture the text as the user types (EditBoxOnTextChanged,
+--     where `self` IS the edit box) and only use the dialog field as a
+--     fallback via popupEditBox()/popupText().
+--  Correction (7 Nov 2026, checked against Blizzard's own StaticPopup.lua,
+--  live branch, Blizzard_StaticPopup/StaticPopup.lua): chaining is NOT
+--  the cause. StaticPopup_Show allocates a different frame for the second
+--  dialog, and StaticPopup_OnClick's dialog:Hide() after OnAccept only
+--  hides the first frame (hide = not OnAccept(...), so a truthy return
+--  keeps it open — which is why invalid input now returns true).
+--  The defer with C_Timer.After(0, …) is kept anyway as belt-and-braces:
+--  it runs after the first popup's hide, and guards the edge case where
+--  no StaticPopup frame is free and a synchronous Show returns nil.
+--  Also fixed in passing: SG_GOAL_TARGET's Enter handler called
+--  `parent:GetScript("OnAccept")`, which is not a frame script and would
+--  error — Enter now calls the same create-goal helper as OnAccept.
+--  The same editBox guard is applied to Seed/Rate, which used it too.
+
+local function trim(s)
+    if not s then return "" end
+    return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+local function popupEditBox(dialog)
+    if not dialog then return nil end
+    local eb = dialog.editBox or dialog.EditBox or dialog.wideEditBox or dialog.WideEditBox
+    if eb then return eb end
+    local name = dialog.GetName and dialog:GetName()
+    if name then
+        return _G[name .. "EditBox"] or _G[name .. "WideEditBox"]
+    end
+    return nil
+end
+
+local function popupText(dialog, fallback)
+    local eb = popupEditBox(dialog)
+    if eb and eb.GetText then
+        local t = eb:GetText()
+        if t and t ~= "" then return t end
+    end
+    return fallback
+end
+
+local function setPopupText(dialog, text)
+    local eb = popupEditBox(dialog)
+    if eb and eb.SetText then eb:SetText(text) end
+    if eb and eb.SetFocus then eb:SetFocus() end
+end
+
+-- text captured as the user types, so OnAccept never depends on the
+-- dialog's editBox field existing at click time
+local pendingName, pendingTarget, pendingSeed, pendingRate = nil, nil, nil, nil
+
+local function captureAndGate(editBox, store)
+    -- `self` here is the edit box; store its text and gate button1 on it
+    local text = editBox:GetText() or ""
+    if store == "name" then pendingName = text
+    elseif store == "target" then pendingTarget = text
+    elseif store == "seed" then pendingSeed = text
+    elseif store == "rate" then pendingRate = text end
+    local parent = editBox.GetParent and editBox:GetParent()
+    if parent and parent.button1 then
+        if text ~= "" then parent.button1:Enable() else parent.button1:Disable() end
+    end
+end
+
+local function showTargetPopup(name)
+    C_Timer.After(0, function()
+        StaticPopup_Show("SG_GOAL_TARGET", nil, nil, name)
+    end)
+end
+
+local function createGoalFromTarget(dialog, name, text)
+    local target = tonumber(trim(text))
+    if name and target and target > 0 then
+        SG:AddGoal(name, target)
+        SG:RefreshUI(); SG:RefreshBroker()
+        return true
+    end
+    return false
+end
+
 StaticPopupDialogs["SG_GOAL_NAME"] = {
     text = "New savings goal — what are you saving for?",
     button1 = "Next", button2 = "Cancel",
     hasEditBox = true, maxLetters = 40,
+    OnShow = function(self)
+        pendingName = nil
+        setPopupText(self, "")
+    end,
+    EditBoxOnTextChanged = function(self) captureAndGate(self, "name") end,
     OnAccept = function(self)
-        local name = self.editBox:GetText()
-        if name and name ~= "" then
-            StaticPopup_Show("SG_GOAL_TARGET", nil, nil, name)
-        end
+        local name = trim(popupText(self, pendingName))
+        if name == "" then return true end -- keep popup open; Blizzard hides unless OnAccept returns true
+        pendingName = nil
+        showTargetPopup(name)
     end,
     EditBoxOnEnterPressed = function(self)
         local parent = self:GetParent()
-        local name = parent.editBox:GetText()
+        local name = trim(self:GetText() or "")
+        if name == "" then return end
+        pendingName = nil
         parent:Hide()
-        if name and name ~= "" then StaticPopup_Show("SG_GOAL_TARGET", nil, nil, name) end
+        showTargetPopup(name)
     end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
     whileDead = true, hideOnEscape = true,
 }
 
@@ -190,18 +287,26 @@ StaticPopupDialogs["SG_GOAL_TARGET"] = {
     text = "How much does it cost? (in gold)",
     button1 = "Create", button2 = "Cancel",
     hasEditBox = true, maxLetters = 12,
+    OnShow = function(self)
+        pendingTarget = nil
+        setPopupText(self, "")
+    end,
+    EditBoxOnTextChanged = function(self) captureAndGate(self, "target") end,
     OnAccept = function(self, name)
-        local target = tonumber(self.editBox:GetText())
-        if name and target and target > 0 then
-            SG:AddGoal(name, target)
-            SG:RefreshUI(); SG:RefreshBroker()
+        if createGoalFromTarget(self, name, popupText(self, pendingTarget)) then
+            pendingTarget = nil
+        else
+            return true -- invalid amount: keep popup open so it can be corrected
         end
     end,
     EditBoxOnEnterPressed = function(self)
         local parent = self:GetParent()
-        parent:GetScript("OnAccept")(parent, parent.data)
-        parent:Hide()
+        if createGoalFromTarget(parent, parent.data, self:GetText()) then
+            pendingTarget = nil
+            parent:Hide()
+        end
     end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
     whileDead = true, hideOnEscape = true,
 }
 
@@ -210,18 +315,24 @@ StaticPopupDialogs["SG_GOAL_SEED"] = {
     button1 = "Set", button2 = "Cancel",
     hasEditBox = true, maxLetters = 12,
     OnShow = function(self, goal)
-        self.editBox:SetText(tostring(math.floor((goal.seed or 0) / 10000)))
+        pendingSeed = nil
+        setPopupText(self, tostring(math.floor((goal.seed or 0) / 10000)))
     end,
+    EditBoxOnTextChanged = function(self) captureAndGate(self, "seed") end,
     OnAccept = function(self, goal)
-        local gold = tonumber(self.editBox:GetText())
+        local gold = tonumber(trim(popupText(self, pendingSeed)))
         if goal and gold and gold >= 0 then
+            pendingSeed = nil
             local applied = SG:SetSeed(goal, gold)
             if applied < gold * 10000 then
                 print("|cff33ff99SavingsGoal:|r seed capped at " .. SG:FormatGoldShort(applied) .. " — that's all the unlocked gold available.")
             end
             SG:RefreshUI(); SG:RefreshBroker()
+        else
+            return true -- invalid amount: keep popup open
         end
     end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
     whileDead = true, hideOnEscape = true,
 }
 
@@ -230,13 +341,22 @@ StaticPopupDialogs["SG_GOAL_RATE"] = {
     button1 = "Set", button2 = "Cancel",
     hasEditBox = true, maxLetters = 12,
     OnShow = function(self, goal)
-        self.editBox:SetText(SG:RateLabel(goal):gsub(" of surplus", ""):gsub("/day", "g"))
+        pendingRate = nil
+        setPopupText(self, SG:RateLabel(goal):gsub(" of surplus", ""):gsub("/day", "g"))
     end,
+    EditBoxOnTextChanged = function(self) captureAndGate(self, "rate") end,
     OnAccept = function(self, goal)
         if goal then
-            SG:SetRate(goal, self.editBox:GetText())
-            SG:RefreshUI(); SG:RefreshBroker()
+            local text = popupText(self, pendingRate)
+            if text and text ~= "" then
+                pendingRate = nil
+                SG:SetRate(goal, text)
+                SG:RefreshUI(); SG:RefreshBroker()
+            else
+                return true -- empty rate: keep popup open
+            end
         end
     end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
     whileDead = true, hideOnEscape = true,
 }

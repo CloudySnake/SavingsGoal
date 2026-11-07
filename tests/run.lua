@@ -27,6 +27,7 @@ end
 
 dofile("test_core.lua")(stubs, ADDON)
 dofile("test_goals.lua")(stubs, ADDON)
+dofile("test_ui.lua")(stubs, ADDON)
 
 print(string.format("\n%d tests, %d failed", total, failed))
 os.exit(failed > 0 and 1 or 0)
