@@ -11,7 +11,7 @@ local function help()
     print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
     print("  /sg look <classic|modern> — switch the info-screen look")
     print("  /sg move <50s|1g> — reclassify that much 'Other' income as a transfer from your own alt")
-    print("  /sg reclassify <50s|1g> <from> <to> — move income between categories, e.g. /sg reclassify 50s other loot")
+    print("  /sg reclassify <50s|1g> <from> <to> — move income or spending between categories, e.g. /sg reclassify 50s other loot")
     print("  /sg last — show what the last gain/spend was filed as")
     print("  /sg log — show the last 10 activity-log entries (time, amount, source, what the addon saw)")
     print("  /sg minimap — toggle the minimap button")
@@ -102,15 +102,26 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
     elseif cmd == "reclassify" then
         local amountText, from, to = rest:match("^(%S+)%s+(%S+)%s+(%S+)%s*$")
         local amount = amountText and SG:ParseGold(amountText)
-        local sources = { ah = true, vendor = true, quest = true, loot = true, other = true }
+        local incomeSources = { ah = true, vendor = true, quest = true, loot = true, other = true }
+        local spendingSources = { ah = true, vendor = true, repair = true, mail = true, other = true }
         from = from and from:lower()
         to = to and to:lower()
-        local moved = (amount and sources[from] and sources[to]) and SG:ReclassifyIncomeSource(from, to, amount) or 0
+        -- income first, then spending: the same command fixes a
+        -- misfiled gain and a misfiled spend
+        local moved, kind = 0, nil
+        if amount and incomeSources[from] and incomeSources[to] then
+            moved = SG:ReclassifyIncomeSource(from, to, amount)
+            if moved > 0 then kind = "income" end
+        end
+        if moved == 0 and amount and spendingSources[from] and spendingSources[to] then
+            moved = SG:ReclassifySpendingSource(from, to, amount)
+            if moved > 0 then kind = "spending" end
+        end
         if moved > 0 then
-            print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " from '" .. from .. "' to '" .. to .. "'")
+            print("|cff33ff99SavingsGoal:|r reclassified " .. SG:FormatGold(moved) .. " of " .. kind .. " from '" .. from .. "' to '" .. to .. "'")
             SG:RefreshUI(); SG:RefreshBroker()
         else
-            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — from/to are ah, vendor, quest, loot or other")
+            print("|cff33ff99SavingsGoal:|r usage: /sg reclassify <50s|1g> <from> <to> — income: ah, vendor, quest, loot, other; spending: ah, vendor, repair, mail, other")
         end
     elseif cmd == "last" then
         local g = SG.lastGain

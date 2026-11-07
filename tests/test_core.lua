@@ -251,6 +251,31 @@ return function(stubs, ADDON)
         assertEq(SG:Char().outgoing, 30)
     end)
 
+    test("ah: listing fee paid while the AH window is open is AH spending", function()
+        -- before this the addon never watched the AH window, so the
+        -- deposit fell through to "other" (Martin, 7 Nov 2026)
+        local SG = fresh(100000)
+        fire(SG, "AUCTION_HOUSE_SHOW")
+        setMoney(SG, 99900) -- 1s listing fee
+        assertEq(SG:Char().spentBySource.ah, 100)
+        assertEq(SG:Char().outgoing, 100)
+        assertEq(SG:Char().spentBySource.other, 0)
+        fire(SG, "AUCTION_HOUSE_CLOSED")
+        setMoney(SG, 99800) -- same spend with the window closed: other
+        assertEq(SG:Char().spentBySource.other, 100)
+    end)
+
+    test("reclassify: spending can be moved between categories", function()
+        local SG = fresh(100000)
+        setMoney(SG, 99900) -- 1s spend, filed as other
+        assertEq(SG:ReclassifySpendingSource("other", "ah", 500), 100) -- capped at what's there
+        assertEq(SG:Char().spentBySource.other, 0)
+        assertEq(SG:Char().spentBySource.ah, 100)
+        assertEq(SG:Char().outgoing, 100) -- total unchanged, only the bucket moved
+        assertEq(SG.lastGain.source, "ah") -- /sg last stays truthful
+        assertEq(SG:ReclassifySpendingSource("other", "ah", 100), 0) -- nothing left to move
+    end)
+
     test("outgoing mail is a money move, not spending", function()
         local SG = fresh(100000)
         stubs.callHook("SetSendMailMoney", 50000)

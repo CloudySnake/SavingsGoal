@@ -5,7 +5,7 @@ local ADDON_NAME = ...
 SavingsGoal = {}
 local SG = SavingsGoal
 
-SG.VERSION = "1.0.13"
+SG.VERSION = "1.0.14"
 SG.WINDOW_DAYS = 14 -- trailing window for daily surplus
 
 -- ---------------------------------------------------------------- events --
@@ -150,12 +150,31 @@ SG.pending = {
     mailOpen = false,              -- mailbox is open
     repair = 0,                    -- cost captured by the RepairAllItems hook (see below)
     lootWindowAt = 0,              -- GetTime() of the last LOOT_OPENED (see grace period below)
+    ah = false,                    -- auction house window is open
 }
 SG.MAIL_FEE = 30 -- copper: the standard postage charged per mail sent
 -- inbox money-mails waiting to be taken: [mailKey] = { amount = n, kind = "ah"|"move" }
 SG.pendingMail = {}
 SG.claimedMail = {} -- keys already consumed, so identical re-sent mails can count again once gone
 SG.ready = false  -- set on PLAYER_LOGIN; ignore money noise before that
+
+-- Move `amount` copper of spending between source buckets (totals and
+-- daily outgoing are unchanged — only the category changes). The
+-- spending twin of ReclassifyIncomeSource, for e.g. an auction listing
+-- fee filed as "other" before the AH window was tracked.
+function SG:ReclassifySpendingSource(from, to, amount)
+    local char = self:Char()
+    local n = math.min(amount or 0, (char.spentBySource and char.spentBySource[from]) or 0)
+    if n <= 0 then return 0 end
+    char.spentBySource[from] = char.spentBySource[from] - n
+    char.spentBySource[to] = (char.spentBySource[to] or 0) + n
+    -- keep /sg last truthful: if this was the last recorded change,
+    -- its filing is now the new bucket, not the original one
+    if self.lastGain and self.lastGain.source == from and self.lastGain.amount == -n then
+        self.lastGain.source = to
+    end
+    return n
+end
 
 -- Move `amount` copper of income between source buckets (totals and
 -- daily income are unchanged — only the category changes). Used when a
@@ -309,6 +328,14 @@ function SG:OnMoney()
                 return
             end
         end
+        if p.ah then
+            -- auction listing fee (deposit) paid while the AH window
+            -- is open. Before this the addon never watched the AH
+            -- window, so deposits fell through to "other".
+            self:RecordDelta(char, delta, "ah")
+            self:CheckLockedDip()
+            return
+        end
         self:RecordDelta(char, delta, p.merchant and "vendor" or "other")
         self:CheckLockedDip()
         return
@@ -428,6 +455,9 @@ SG:Register("PLAYER_MONEY", function(self) self:OnMoney() end)
 
 SG:Register("MERCHANT_SHOW", function(self) self.pending.merchant = true end)
 SG:Register("MERCHANT_CLOSED", function(self) self.pending.merchant = false; self.pending.repair = 0 end)
+
+SG:Register("AUCTION_HOUSE_SHOW", function(self) self.pending.ah = true end)
+SG:Register("AUCTION_HOUSE_CLOSED", function(self) self.pending.ah = false end)
 
 -- Scan the loot window for coin slots (FonzAppraiser's approach):
 -- the money is sitting in the window as a coin slot before it is ever
