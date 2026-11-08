@@ -26,10 +26,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Fail if CF_API_KEY secret is missing
-        if: ${{ secrets.CF_API_KEY == '' }}
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
         run: |
-          echo "::error::CF_API_KEY secret is not set. Add it in the repo Settings > Secrets and variables > Actions."
-          exit 1
+          if [ -z "$CF_API_KEY" ]; then
+            echo "::error::CF_API_KEY secret is not set. Add it in the repo Settings > Secrets and variables > Actions."
+            exit 1
+          fi
 
       - name: Fail if CurseForge project ID is missing
         run: |
