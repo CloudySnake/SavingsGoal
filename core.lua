@@ -66,6 +66,24 @@ function SG:FormatGoldShort(copper) -- "1,240g"
     return (copper < 0 and "-" or "") .. self:Comma(g) .. "g"
 end
 
+function SG:FormatGoldTiered(copper) -- goal row: "45s 30c" < 1g, "5g 30s" < 10g, "25g" at 10g+
+    local neg = copper < 0
+    copper = math.floor(math.abs(copper) + 0.5)
+    local t
+    if copper < 10000 then
+        local s = math.floor(copper / 100)
+        local c = copper % 100
+        t = string.format("%ds %dc", s, c)
+    elseif copper < 100000 then
+        local g = math.floor(copper / 10000)
+        local s = math.floor((copper % 10000) / 100)
+        t = string.format("%sg %ds", self:Comma(g), s)
+    else
+        t = self:FormatGoldShort(copper)
+    end
+    return neg and ("-" .. t) or t
+end
+
 function SG:FormatEta(days) -- "~100 days" / "~48 years"; nil -> "no surplus yet"
     if days == nil then return "no surplus yet" end
     if days == 0 then return "complete!" end
