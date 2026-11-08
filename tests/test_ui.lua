@@ -326,6 +326,33 @@ return function(stubs, ADDON)
         assertEq(anyVisibleMatching("Keeping for spending: 1g/day"), true)
     end)
 
+    test("Goal row shows tiered saved amount and the bar has a full-amount tooltip", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        local g = SG:AddGoal("Epic Mount", 100)
+        g.saved = 4530 -- 45s 30c of 100g
+        SG:ShowUI()
+        assertEq(anyVisibleMatching("45s 30c / 100g"), true)
+        assertEq(anyVisibleMatching("0g / 100g"), false)
+        -- the goal bar has mouseover scripts for the full-amount tooltip
+        local bar = nil
+        for _, f in ipairs(stubs.frames) do
+            if f._barValue == 4530 then bar = f end
+        end
+        assertEq(bar ~= nil, true)
+        assertEq(type(bar._scripts["OnEnter"]), "function")
+        assertEq(type(bar._scripts["OnLeave"]), "function")
+        -- 5g 30s saved shows gold and silver
+        g.saved = 53000
+        SG:RefreshUI()
+        assertEq(anyVisibleMatching("5g 30s / 100g"), true)
+        -- 25g saved shows gold only
+        g.saved = 250000
+        SG:RefreshUI()
+        assertEq(anyVisibleMatching("25g / 100g"), true)
+    end)
+
     test("Info screen shows goal % and today's net", function()
         local SG = fresh()
         local char = SG:Char()

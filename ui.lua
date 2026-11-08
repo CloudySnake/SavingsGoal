@@ -236,12 +236,24 @@ function SG:RefreshUI()
         else
             bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
         end
+        -- Hovering the bar shows the full saved/target amounts (the label
+        -- below it is tiered: silver/copper under 1g, gold/silver under
+        -- 10g, gold only above that).
+        bar:EnableMouse(true)
+        bar:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(bar, "ANCHOR_TOP")
+            GameTooltip:AddLine(g.name, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Saved", self:FormatGold(have), 1, 1, 1, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Target", self:FormatGold(g.target), 1, 1, 1, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
         -- Bar label sits BELOW the bar with clearance, not tucked under
         -- it: at y-18 (bar height 20) its top — the "~" in "~5 years"
         -- first — was hidden behind the bar's bottom edge in-game
         -- (screenshot 7 Nov 2026). y-26 leaves a 6px gap.
         local bl = label(content, string.format("%s / %s (%d%%)  (%s)   [%s]",
-            self:FormatGoldShort(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11, mr, mg, mb)
+            self:FormatGoldTiered(have), self:FormatGoldShort(g.target), self:GoalPercent(g), eta, self:RateLabel(g)), 11, mr, mg, mb)
         bl:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y - 26)
         nextY(50)
     end

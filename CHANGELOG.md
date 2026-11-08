@@ -4,6 +4,10 @@ All notable changes to SavingsGoal, newest first. Version numbers match
 `## Version:` in `SavingsGoal.toc`. Add an entry here on every version bump,
 under the new version heading.
 
+## [1.0.26] - 2026-11-08
+### Changed
+- Goal row on the main screen now shows the saved amount with more detail when it is small: silver and copper under 1g (`45s 30c`), gold and silver under 10g (`5g 30s`), gold only at 10g and up (`25g`). Hovering the goal's progress bar shows a tooltip with the full saved and target amounts. The Titan Panel display is unchanged.
+
 ## [1.0.25] - 2026-11-08
 ### Changed
 - Release workflow is now tag-driven: it runs when a version tag is pushed (`git tag 1.0.25 && git push origin 1.0.25`), instead of on every merge to main. Merging to main no longer deploys anything by itself — you release when you tag. The workflow reads the version from the tag and fails if it does not match the `.toc` version, and the tag-on-HEAD step is gone (the tag that starts the run is already there). This also fixes the release type: 1.0.24 went up as an Alpha file because the packager only calls a file a Release when HEAD is tagged with a clean version, and tagging after packaging left HEAD untagged at packaging time. Same addon code as 1.0.24, re-released as a Release.
