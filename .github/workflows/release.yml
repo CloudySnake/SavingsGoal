@@ -2,11 +2,8 @@ name: Release to CurseForge
 
 on:
   push:
-    branches: [main]
-    paths:
-      - '*.lua'
-      - 'SavingsGoal.toc'
-      - '.pkgmeta'
+    tags:
+      - '[0-9]*'
 
 permissions:
   contents: write
@@ -19,11 +16,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read version from .toc
+      - name: Read version from tag and check it matches .toc
         id: version
         run: |
-          VERSION=$(grep -m1 '^## Version:' SavingsGoal.toc | sed 's/^## Version: *//')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          TAG_VERSION="${{ github.ref_name }}"
+          TOC_VERSION=$(grep -m1 '^## Version:' SavingsGoal.toc | sed 's/^## Version: *//')
+          if [ "$TAG_VERSION" != "$TOC_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match .toc version $TOC_VERSION. Bump the .toc to the tag version (or tag the .toc version) and try again."
+            exit 1
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Fail if CF_API_KEY secret is missing
         env:
@@ -54,15 +56,3 @@ jobs:
           args: -n "SavingsGoal-${{ steps.version.outputs.version }}:${{ steps.version.outputs.version }}"
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
-
-      - name: Tag the release
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag $VERSION already exists. Bump the version in SavingsGoal.toc."
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$VERSION"
-          git push origin "$VERSION"
