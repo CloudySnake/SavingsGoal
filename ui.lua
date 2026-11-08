@@ -185,6 +185,33 @@ function SG:RefreshUI()
         local e = label(content, "No goals yet — click Add goal to save for your first mount.", 12, mr, mg, mb)
         e:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y); nextY(30)
     end
+    -- Quick add: one-click riding presets. A preset hides once you
+    -- already have a goal with that name, so it can't be added twice.
+    -- (Costs are the in-game totals: 100g at 40, 1000g at 60.)
+    local presets = {
+        { name = "Lvl 40 Riding", target = 100 },
+        { name = "Lvl 60 Riding", target = 1000 },
+    }
+    local anyPreset = false
+    for _, p in ipairs(presets) do
+        if not self:GoalByName(p.name) then anyPreset = true end
+    end
+    if anyPreset then
+        local qa = label(content, "Quick add:", 12, mr, mg, mb)
+        qa:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
+        local bx = 80
+        for _, p in ipairs(presets) do
+            if not self:GoalByName(p.name) then
+                local b = smallButton(content, p.name .. " - " .. p.target .. "g", 180, function()
+                    self:AddGoal(p.name, p.target)
+                    self:RefreshUI(); self:RefreshBroker()
+                end)
+                b:SetPoint("TOPLEFT", content, "TOPLEFT", bx, y + 4)
+                bx = bx + 180 + 6
+            end
+        end
+        nextY(30)
+    end
     for _, g in ipairs(goals) do
         local need = self:GoalNeed(g)
         local have = (g.seed or 0) + (g.saved or 0)

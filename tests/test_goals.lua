@@ -261,6 +261,14 @@ return function(stubs, ADDON)
         assertEq(SG:GoalDaysLeft(g), nil)
     end)
 
+    test("GoalByName finds a goal by name, nil when there is none", function()
+        local SG = fresh()
+        assertEq(SG:GoalByName("Lvl 40 Riding"), nil)
+        local g = SG:AddGoal("Lvl 40 Riding", 100)
+        assertEq(SG:GoalByName("Lvl 40 Riding"), g)
+        assertEq(SG:GoalByName("Lvl 60 Riding"), nil)
+    end)
+
     test("TickGoals respects the daily keep", function()
         local SG = fresh()
         seedDaily(SG, { [0] = { 20000, 0 } }) -- 20000c/day surplus

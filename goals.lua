@@ -24,6 +24,13 @@ function SG:AddGoal(name, targetGold)
     return g
 end
 
+function SG:GoalByName(name)
+    for _, g in ipairs(self:GetGoals()) do
+        if g.name == name then return g end
+    end
+    return nil
+end
+
 function SG:DeleteGoal(goal)
     for i, g in ipairs(self.db.goals) do
         if g == goal then
