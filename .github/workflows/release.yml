@@ -1,0 +1,64 @@
+name: Release to CurseForge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.lua'
+      - 'SavingsGoal.toc'
+      - '.pkgmeta'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from .toc
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^## Version:' SavingsGoal.toc | sed 's/^## Version: *//')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if CF_API_KEY secret is missing
+        if: ${{ secrets.CF_API_KEY == '' }}
+        run: |
+          echo "::error::CF_API_KEY secret is not set. Add it in the repo Settings > Secrets and variables > Actions."
+          exit 1
+
+      - name: Fail if CurseForge project ID is missing
+        run: |
+          if ! grep -q '^## X-Curse-Project-ID:' SavingsGoal.toc; then
+            echo "::error::No X-Curse-Project-ID in SavingsGoal.toc. Add it (from the CurseForge project page) before the first automated deploy."
+            exit 1
+          fi
+
+      - name: Build Lua and run tests
+        run: |
+          curl -sSL -o /tmp/lua.tar.gz https://github.com/lua/lua/archive/refs/tags/v5.4.7.tar.gz
+          mkdir -p /tmp/lua-build && tar xzf /tmp/lua.tar.gz -C /tmp/lua-build --strip-components=1
+          cd /tmp/lua-build && gcc -O2 -std=gnu99 -DLUA_USE_LINUX -o /tmp/lua $(ls *.c | grep -v -e ltests.c -e onelua.c) -lm -ldl
+          cd "$GITHUB_WORKSPACE/tests" && /tmp/lua run.lua ../
+
+      - name: Tag the release
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists. Bump the version in SavingsGoal.toc."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+      - name: Package and upload to CurseForge
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,9 @@
+package-as: SavingsGoal
+enable-nolib-creation: no
+ignore:
+  - tests
+  - README.md
+  - GUIDE.md
+  - SPEC.md
+  - INSTALL-CHECKLIST.md
+  - CHANGELOG.md
