@@ -4,6 +4,10 @@ All notable changes to SavingsGoal, newest first. Version numbers match
 `## Version:` in `SavingsGoal.toc`. Add an entry here on every version bump,
 under the new version heading.
 
+## [1.0.23] - 2026-11-08
+### Fixed
+- Release workflow: the "CF_API_KEY secret is missing" check used `secrets` in an `if:` expression, which GitHub rejects — the secret is now checked via an environment variable instead. (1.0.22 merged but its deploy never ran because the workflow file itself was invalid; 1.0.23 is the first version the automated deploy will publish.)
+
 ## [1.0.22] - 2026-11-08
 ### Added
 - CurseForge release automation: a GitHub Actions workflow deploys to CurseForge on every merge to main, tagging the release from the `.toc` version automatically. Packaging config (`.pkgmeta`) and this changelog.
