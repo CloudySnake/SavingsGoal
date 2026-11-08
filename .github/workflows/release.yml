@@ -48,6 +48,13 @@ jobs:
           cd /tmp/lua-build && gcc -O2 -std=gnu99 -DLUA_USE_LINUX -o /tmp/lua $(ls *.c | grep -v -e ltests.c -e onelua.c) -lm -ldl
           cd "$GITHUB_WORKSPACE/tests" && /tmp/lua run.lua ../
 
+      - name: Package and upload to CurseForge
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -n "SavingsGoal-${{ steps.version.outputs.version }}:${{ steps.version.outputs.version }}"
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+
       - name: Tag the release
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -59,9 +66,3 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$VERSION"
           git push origin "$VERSION"
-
-      - name: Package and upload to CurseForge
-        uses: BigWigsMods/packager@v2
-        env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
