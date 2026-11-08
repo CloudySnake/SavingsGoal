@@ -4,6 +4,10 @@ All notable changes to SavingsGoal, newest first. Version numbers match
 `## Version:` in `SavingsGoal.toc`. Add an entry here on every version bump,
 under the new version heading.
 
+## [1.0.25] - 2026-11-08
+### Changed
+- Release workflow is now tag-driven: it runs when a version tag is pushed (`git tag 1.0.25 && git push origin 1.0.25`), instead of on every merge to main. Merging to main no longer deploys anything by itself — you release when you tag. The workflow reads the version from the tag and fails if it does not match the `.toc` version, and the tag-on-HEAD step is gone (the tag that starts the run is already there). This also fixes the release type: 1.0.24 went up as an Alpha file because the packager only calls a file a Release when HEAD is tagged with a clean version, and tagging after packaging left HEAD untagged at packaging time. Same addon code as 1.0.24, re-released as a Release.
+
 ## [1.0.24] - 2026-11-08
 ### Fixed
 - Release workflow: the packager skipped the upload with "Found future tag" because the workflow created the tag on HEAD before packaging, and the packager treats a tagged HEAD on a branch push as a duplicate build (it expects the real build to come from the tag push). The workflow no longer tags before packaging: it passes the version from the `.toc` to the packager directly (`-n`), uploads, and only then creates the tag for the record. (1.0.23 merged and was tagged, but no file reached CurseForge, so 1.0.23 is skipped; 1.0.24 is the first version the automated deploy will publish.)
