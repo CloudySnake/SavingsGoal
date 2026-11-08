@@ -6,7 +6,7 @@ local function help()
     print("  /sg — open the info screen")
     print("  /sg add <name> <target gold> — e.g. /sg add EpicMount 1000")
     print("  /sg list — show goals and forecasts")
-    print("  /sg seed <name> <gold> — allocate current gold to a goal")
+    print("  /sg seed <name> <gold> — allocate current gold to a goal (e.g. 40s, 1g 50s)")
     print("  /sg rate <name> <50%|10g> — set the savings rate")
     print("  /sg keep <50%|1g> — hold back for day-to-day spending (0% switches it off)")
     print("  /sg look <classic|modern> — switch the info-screen look")
@@ -54,14 +54,21 @@ SlashCmdList["SAVINGSGOAL"] = function(msg)
         end
         print("  Safe to spend: " .. SG:FormatGold(SG:SafeToSpend()))
     elseif cmd == "seed" then
-        local name, gold = rest:match("^(.-)%s+(%d+)%s*$")
+        -- note: no %s inside the class — it does not match there,
+        -- use a literal space instead (works in WoW's Lua 5.1 too)
+        local name, amountText = rest:match("^(.-)%s+([%dsgc ]+)%s*$")
         local g = name and findGoal(name)
-        if g and gold then
-            SG:SetSeed(g, tonumber(gold))
+        -- a plain number means gold (as before); a g/s/c amount means
+        -- that exact copper, so silver can be seeded too — the seed
+        -- command only took whole gold before, which locked out
+        -- low-level characters whose whole wealth is silver
+        local copper = amountText and (amountText:find("[gsc]") and SG:ParseGold(amountText) or tonumber(amountText) * 10000)
+        if g and copper then
+            SG:SetSeed(g, copper / 10000)
             print("|cff33ff99SavingsGoal:|r '" .. g.name .. "' seeded with " .. SG:FormatGoldShort(g.seed))
             SG:RefreshUI(); SG:RefreshBroker()
         else
-            print("|cff33ff99SavingsGoal:|r usage: /sg seed <name> <gold>")
+            print("|cff33ff99SavingsGoal:|r usage: /sg seed <name> <gold> — e.g. /sg seed Mount 40s")
         end
     elseif cmd == "rate" then
         local name, rate = rest:match("^(.-)%s+(%S+)%s*$")

@@ -274,6 +274,30 @@ return function(stubs, ADDON)
         end
     end)
 
+    test("/sg seed accepts a silver amount", function()
+        -- 8 Nov 2026: the seed command only took whole gold, so a
+        -- low-level character whose whole wealth is silver could not
+        -- seed at all. A g/s/c amount now seeds that exact copper.
+        local SG = fresh()
+        _G.SlashCmdList = _G.SlashCmdList or {}
+        dofile(ADDON .. "slash.lua")
+        SG:Char().lastMoney = 6000 -- 60s on the account
+        local g = SG:AddGoal("Mount", 100) -- 100g target
+        SlashCmdList["SAVINGSGOAL"]("seed Mount 40s")
+        assertEq(g.seed, 4000)
+        assertEq(SG:SafeToSpend(), 2000) -- 60s - 40s locked
+    end)
+
+    test("/sg seed with a plain number still means gold", function()
+        local SG = fresh()
+        _G.SlashCmdList = _G.SlashCmdList or {}
+        dofile(ADDON .. "slash.lua")
+        SG:Char().lastMoney = 1000000 -- 100g on the account
+        local g = SG:AddGoal("Mount", 100)
+        SlashCmdList["SAVINGSGOAL"]("seed Mount 5")
+        assertEq(g.seed, 50000)
+    end)
+
     test("Daily Keep popup sets the keep", function()
         local SG = fresh()
         local dialog = makeDialog("SG_DAILY_KEEP", "upper")
