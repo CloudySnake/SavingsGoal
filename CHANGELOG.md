@@ -4,6 +4,10 @@ All notable changes to SavingsGoal, newest first. Version numbers match
 `## Version:` in `SavingsGoal.toc`. Add an entry here on every version bump,
 under the new version heading.
 
+## [1.0.27] - 2026-11-08
+### Added
+- Quick-add riding presets on the main screen: one-click buttons for "Lvl 40 Riding - 100g" and "Lvl 60 Riding - 1000g" that create the goal immediately (default 100% rate). A preset hides once you already have a goal with that name, so it can't be added twice; the whole row disappears once both are taken.
+
 ## [1.0.26] - 2026-11-08
 ### Changed
 - Goal row on the main screen now shows the saved amount with more detail when it is small: silver and copper under 1g (`45s 30c`), gold and silver under 10g (`5g 30s`), gold only at 10g and up (`25g`). Hovering the goal's progress bar shows a tooltip with the full saved and target amounts. The Titan Panel display is unchanged.

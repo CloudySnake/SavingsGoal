@@ -353,6 +353,46 @@ return function(stubs, ADDON)
         assertEq(anyVisibleMatching("25g / 100g"), true)
     end)
 
+    test("Quick add presets create the riding goal in one click", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        SG:ShowUI()
+        assertEq(countVisible("Quick add:"), 1)
+        -- find the Lvl 40 preset button and click it
+        local btn = nil
+        for _, f in ipairs(stubs.frames) do
+            if f._text == "Lvl 40 Riding - 100g" then btn = f end
+        end
+        assertEq(btn ~= nil, true)
+        btn:GetScript("OnClick")(btn)
+        local g = SG:GoalByName("Lvl 40 Riding")
+        assertEq(g ~= nil, true)
+        assertEq(g.target, 1000000) -- 100g in copper
+        assertEq(g.rate.value, 100) -- default 100% of surplus
+    end)
+
+    test("Quick add hides a preset once that goal exists", function()
+        local SG = fresh()
+        local char = SG:Char()
+        char.lastMoney = 1000000
+        SG:AddGoal("Lvl 40 Riding", 100)
+        SG:ShowUI()
+        -- the Lvl 40 button was never created; the Lvl 60 one still is
+        local found40, found60 = false, false
+        for _, f in ipairs(stubs.frames) do
+            if f._text == "Lvl 40 Riding - 100g" then found40 = true end
+            if f._text == "Lvl 60 Riding - 1000g" then found60 = true end
+        end
+        assertEq(found40, false)
+        assertEq(found60, true)
+        assertEq(countVisible("Quick add:"), 1)
+        -- once both riding goals exist the whole row disappears
+        SG:AddGoal("Lvl 60 Riding", 1000)
+        SG:RefreshUI()
+        assertEq(countVisible("Quick add:"), 0)
+    end)
+
     test("Info screen shows goal % and today's net", function()
         local SG = fresh()
         local char = SG:Char()
